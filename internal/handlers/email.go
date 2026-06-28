@@ -19,7 +19,7 @@ type ResendPayload struct {
 	Text    string   `json:"text"`
 }
 
-func sendEmailNotification(submissionId int64, formName, notifyEmail string, data SubmitRequest) {
+func sendEmailNotification(submissionId int64, formName, notifyEmail string, data SubmitRequest, clientIP string) {
 	apiKey := os.Getenv("RESEND_API_KEY")
 	if apiKey == "" {
 		log.Println("RESEND_API_KEY not configured, skipping email")
@@ -35,10 +35,36 @@ func sendEmailNotification(submissionId int64, formName, notifyEmail string, dat
 		fromName = "Form Messenger"
 	}
 
-	subject := fmt.Sprintf("feedback from %s", formName)
+	// i18n subject and labels
+	lang := data.Lang
+	var subject string
+	var labelName, labelEmail, labelPhone, labelContent, labelSource, labelIP string
+	if lang == "zh" {
+		subject = fmt.Sprintf("来自 %s 的反馈", formName)
+		labelName = "姓名"
+		labelEmail = "邮箱"
+		labelPhone = "电话"
+		labelContent = "内容"
+		labelSource = "来源"
+		labelIP = "IP"
+	} else {
+		subject = fmt.Sprintf("Feedback from %s", formName)
+		labelName = "Name"
+		labelEmail = "Email"
+		labelPhone = "Phone"
+		labelContent = "Content"
+		labelSource = "Source"
+		labelIP = "IP"
+	}
+
 	body := fmt.Sprintf(
-		"Name: %s\nEmail: %s\nPhone: %s\n\n%s\n\n---\nSource: %s\nIP: %s",
-		data.Name, data.Email, data.Phone, data.Content, data.SourceURL, "",
+		"%s: %s\n%s: %s\n%s: %s\n\n%s: %s\n\n---\n%s: %s\n%s: %s",
+		labelName, data.Name,
+		labelEmail, data.Email,
+		labelPhone, data.Phone,
+		labelContent, data.Content,
+		labelSource, data.SourceURL,
+		labelIP, clientIP,
 	)
 
 	payload := ResendPayload{
@@ -57,7 +83,6 @@ func sendEmailNotification(submissionId int64, formName, notifyEmail string, dat
 
 	client := &http.Client{Timeout: 10 * time.Second}
 
-	// Check if proxy is set
 	proxyUrlStr := os.Getenv("HTTP_PROXY")
 	if proxyUrlStr != "" {
 		proxyUrl, err := url.Parse(proxyUrlStr)

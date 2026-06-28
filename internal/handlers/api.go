@@ -25,6 +25,7 @@ type SubmitRequest struct {
 	Content        string `json:"content"`
 	SourceURL      string `json:"source_url"`
 	TurnstileToken string `json:"turnstile_token"`
+	Lang           string `json:"lang"`
 }
 
 func SubmitForm(c echo.Context) error {
@@ -81,7 +82,7 @@ func SubmitForm(c echo.Context) error {
 	}
 
 	if emailToSendTo != "" {
-		go sendEmailNotification(submissionId, formName, emailToSendTo, req)
+		go sendEmailNotification(submissionId, formName, emailToSendTo, req, c.RealIP())
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "success", "message": "Feedback received"})
