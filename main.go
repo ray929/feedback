@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"strings"
+	"unsafe"
 
 	"feedback/internal/db"
 	"feedback/internal/handlers"
@@ -34,16 +34,40 @@ func (t *TemplateRegistry) Render(w io.Writer, name string, data interface{}, c 
 	return t.templates.ExecuteTemplate(w, name, data)
 }
 
-// setProcessTitle 设置进程标题，仅在 Linux 下生效，
-// 写入 /proc/self/comm 使 ps / htop 等工具显示为便于识别的名称。
+// setProcessTitle 在 Linux 下修改进程在 ps aux 中的显示名称。
+// 写入 /proc/self/comm（影响 ps -e 短名称）并覆盖原始 argv[0] 内存（影响 ps aux CMD 列）。
 func setProcessTitle(title string) {
-	if runtime.GOOS == "linux" {
-		comm := title
-		if len(comm) > 15 {
-			comm = comm[:15]
-		}
-		comm = strings.TrimRight(comm, "\x00")
-		os.WriteFile("/proc/self/comm", []byte(comm), 0644)
+	if runtime.GOOS != "linux" {
+		return
+	}
+
+	// 1. 写入 /proc/self/comm — 影响 ps -e / top 短名称（限 15 字符）
+	comm := title
+	if len(comm) > 15 {
+		comm = comm[:15]
+	}
+	os.WriteFile("/proc/self/comm", []byte(comm), 0644)
+
+	// 2. 覆盖原始 argv[0] 内存 — 影响 ps aux CMD 列
+	// os.Args[0] 在 Linux 上指向内核保留的原始 argv[0] 所在栈区域，可安全写入
+	oldArg := os.Args[0]
+	oldPtr := unsafe.StringData(oldArg)
+
+	const maxLen = 2048
+	n := len(title)
+	if n > maxLen {
+		n = maxLen
+	}
+	for i := 0; i < n; i++ {
+		*(*byte)(unsafe.Add(unsafe.Pointer(oldPtr), i)) = title[i]
+	}
+	// 用 0 填充剩余空间，确保 ps 正确截断
+	zeroLen := len(oldArg) + 256
+	if zeroLen > maxLen {
+		zeroLen = maxLen
+	}
+	for i := n; i < zeroLen; i++ {
+		*(*byte)(unsafe.Add(unsafe.Pointer(oldPtr), i)) = 0
 	}
 }
 
@@ -132,11 +156,15 @@ func main() {
 	adminAPI.GET("/forms/:id/submissions", handlers.GetSubmissions)
 
 	// 启动服务器
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8010"
+	listenAddr := os.Getenv("LISTEN_ADDR")
+	if listenAddr == "" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8010"
+		}
+		listenAddr = ":" + port
 	}
-	setProcessTitle(fmt.Sprintf("feedback-server :%s", port))
-	log.Printf("Starting server on port %s", port)
-	e.Logger.Fatal(e.Start(":" + port))
+	setProcessTitle(fmt.Sprintf("feedback-server %s", listenAddr))
+	log.Printf("Starting server on %s", listenAddr)
+	e.Logger.Fatal(e.Start(listenAddr))
 }

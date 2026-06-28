@@ -45,6 +45,7 @@
 ```env
 # 应用配置
 SITE_NAME="Forms"
+LISTEN_ADDR="0.0.0.0:8010"          # 监听地址，留空则使用 PORT
 
 # Cloudflare Turnstile
 TURNSTILE_SITE_KEY="1x00000000000000000000AA"
