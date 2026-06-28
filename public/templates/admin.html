@@ -127,11 +127,10 @@
                                 <td style="padding: 16px 8px;" x-text="form.name"></td>
                                 <td style="padding: 16px 8px; font-family: monospace; color: var(--colors-body-mid);" x-text="form.id"></td>
                                 <td style="padding: 16px 8px;">
-                                    <a href="#" class="action-link" @click.prevent="openPreview(form.id)" x-text="t[lang].preview"></a>
+                                    <a href="#" class="action-link" @click.prevent="openShareModal(form)" x-text="t[lang].share"></a>
                                     <a href="#" class="action-link" @click.prevent="window.open('/q/' + form.id, '_blank')" x-text="t[lang].queryLink"></a>
                                     <a href="#" class="action-link" @click.prevent="viewSubmissions(form)" x-text="t[lang].data"></a>
                                     <a href="#" class="action-link" @click.prevent="openEditModal(form)" x-text="t[lang].edit"></a>
-                                    <a href="#" class="action-link" @click.prevent="openEmbedModal(form)" x-text="t[lang].embedCode"></a>
                                     <a href="#" class="action-link" style="color: var(--colors-error);" @click.prevent="deleteForm(form.id)" x-text="t[lang].delete"></a>
                                 </td>
                             </tr>
@@ -231,15 +230,35 @@
                 </form>
             </template>
 
-            <!-- Embed Code Modal -->
-            <template x-if="modalType === 'embed'">
+            <!-- Share Modal (Preview + Embed) -->
+            <template x-if="modalType === 'share'">
                 <div>
                     <p style="margin-top:0; font-size: 14px; color: var(--colors-body);" x-text="t[lang].embedDesc"></p>
-                    <div class="input-group">
-                        <textarea class="text-input" rows="4" readonly x-text="getEmbedCode()" style="font-family: monospace; font-size: 13px; color: var(--colors-body-mid); background-color: var(--colors-canvas);"></textarea>
+                    
+                    <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                        <div class="input-group" style="flex:1; margin-bottom:0;">
+                            <label x-text="t[lang].language"></label>
+                            <select x-model="shareLang" class="text-input" style="cursor:pointer;">
+                                <option value="en">English</option>
+                                <option value="zh">中文</option>
+                            </select>
+                        </div>
+                        <div class="input-group" style="flex:1; margin-bottom:0;">
+                            <label x-text="t[lang].theme"></label>
+                            <select x-model="shareTheme" class="text-input" style="cursor:pointer;">
+                                <option value="light" x-text="t[lang].lightTheme"></option>
+                                <option value="dark" x-text="t[lang].darkTheme"></option>
+                            </select>
+                        </div>
                     </div>
-                    <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
-                        <button type="button" class="button-outline" @click="closeModal()" x-text="t[lang].close"></button>
+
+                    <div class="input-group">
+                        <label x-text="t[lang].embedCode"></label>
+                        <textarea class="text-input" rows="4" readonly x-text="getShareCode()" style="font-family: monospace; font-size: 13px; color: var(--colors-body-mid); background-color: var(--colors-canvas);"></textarea>
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end;">
+                        <button type="button" class="button-outline" style="width: auto;" @click="previewShare" x-text="t[lang].preview"></button>
+                        <button type="button" class="button-outline" style="width: auto;" @click="closeModal()" x-text="t[lang].close"></button>
                     </div>
                 </div>
             </template>
@@ -309,9 +328,11 @@ function adminApp() {
 
         // Modal state
         showModal: false,
-        modalType: '', // 'create', 'edit', 'embed', 'detail'
+        modalType: '', // 'create', 'edit', 'share', 'detail'
         modalTitle: '',
         saving: false,
+        shareLang: 'en',
+        shareTheme: 'light',
         editingForm: {
             id: '',
             name: '',
@@ -333,10 +354,15 @@ function adminApp() {
                 id: "ID",
                 actions: "Actions",
                 preview: "Preview",
+                share: "Share",
                 queryLink: "Query",
                 data: "Data",
                 edit: "Edit",
                 embedCode: "Embed Code",
+                language: "Language",
+                theme: "Theme",
+                lightTheme: "☀ Light",
+                darkTheme: "🌙 Dark",
                 delete: "Delete",
                 logout: "Logout",
                 noForms: "No forms created yet.",
@@ -384,10 +410,15 @@ function adminApp() {
                 id: "编号",
                 actions: "操作",
                 preview: "预览",
+                share: "分享",
                 queryLink: "查询",
                 data: "数据",
                 edit: "编辑",
                 embedCode: "嵌入代码",
+                language: "语言",
+                theme: "主题",
+                lightTheme: "☀ 浅色",
+                darkTheme: "🌙 深色",
                 delete: "删除",
                 logout: "退出",
                 noForms: "暂无表单。",
@@ -543,10 +574,12 @@ function adminApp() {
             this.showModal = true;
         },
 
-        openEmbedModal(form) {
-            this.modalType = 'embed';
-            this.modalTitle = this.lang === 'zh' ? '嵌入代码' : 'Embed Form';
+        openShareModal(form) {
+            this.modalType = 'share';
+            this.modalTitle = this.lang === 'zh' ? '分享表单' : 'Share Form';
             this.editingForm = { id: form.id };
+            this.shareLang = 'en';
+            this.shareTheme = 'light';
             this.showModal = true;
         },
 
@@ -566,8 +599,13 @@ function adminApp() {
             this.showModal = false;
         },
 
-        openPreview(id) {
-            window.open(`/f/${id}?theme=dark&lang=zh`, '_blank');
+        getShareCode() {
+            const host = window.location.origin;
+            return `<script src="${host}/embed.js" data-id="${this.editingForm.id}" data-theme="${this.shareTheme}" data-lang="${this.shareLang}"><\/script>`;
+        },
+
+        previewShare() {
+            window.open(`/f/${this.editingForm.id}?theme=${this.shareTheme}&lang=${this.shareLang}`, '_blank');
         },
 
         async viewSubmissions(form) {
@@ -584,11 +622,6 @@ function adminApp() {
             } finally {
                 this.loadingSubmissions = false;
             }
-        },
-
-        getEmbedCode() {
-            const host = window.location.origin;
-            return `<script src="${host}/embed.js" data-id="${this.editingForm.id}" data-theme="light" data-lang="en"><\/script>`;
         },
 
         async saveForm() {
