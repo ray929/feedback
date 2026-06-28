@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"unsafe"
 
 	"feedback/internal/db"
 	"feedback/internal/handlers"
@@ -35,41 +34,16 @@ func (t *TemplateRegistry) Render(w io.Writer, name string, data interface{}, c 
 	return t.templates.ExecuteTemplate(w, name, data)
 }
 
-// setProcessTitle 在 Linux 下修改进程在 ps aux 中的显示名称。
-// 写入 /proc/self/comm（影响 ps -e 短名称）并覆盖原始 argv[0] 内存（影响 ps aux CMD 列）。
+// setProcessTitle 在 Linux 下写入 /proc/self/comm，使 ps / htop 显示便于识别的名称。
 func setProcessTitle(title string) {
 	if runtime.GOOS != "linux" {
 		return
 	}
-
-	// 1. 写入 /proc/self/comm — 影响 ps -e / top 短名称（限 15 字符）
 	comm := title
 	if len(comm) > 15 {
 		comm = comm[:15]
 	}
 	os.WriteFile("/proc/self/comm", []byte(comm), 0644)
-
-	// 2. 覆盖原始 argv[0] 内存 — 影响 ps aux CMD 列
-	// os.Args[0] 在 Linux 上指向内核保留的原始 argv[0] 所在栈区域，可安全写入
-	oldArg := os.Args[0]
-	oldPtr := unsafe.StringData(oldArg)
-
-	const maxLen = 2048
-	n := len(title)
-	if n > maxLen {
-		n = maxLen
-	}
-	for i := 0; i < n; i++ {
-		*(*byte)(unsafe.Add(unsafe.Pointer(oldPtr), i)) = title[i]
-	}
-	// 用 0 填充剩余空间，确保 ps 正确截断
-	zeroLen := len(oldArg) + 256
-	if zeroLen > maxLen {
-		zeroLen = maxLen
-	}
-	for i := n; i < zeroLen; i++ {
-		*(*byte)(unsafe.Add(unsafe.Pointer(oldPtr), i)) = 0
-	}
 }
 
 func main() {
