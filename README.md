@@ -122,6 +122,60 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-serv
 
 `data/` 目录会自动创建 SQLite 数据库文件。
 
+### 部署（systemd）
+
+以 `www` 用户运行，二进制文件放 `/opt/feedback/`，配置文件放 `/etc/feedback/`：
+
+```bash
+# 创建目录和用户
+mkdir -p /opt/feedback /etc/feedback /var/lib/feedback/data
+useradd -r -s /sbin/nologin www
+
+# 上传二进制文件和配置
+cp feedback-server /opt/feedback/
+cp .env /etc/feedback/
+cp .htpasswd /etc/feedback/
+chown -R www:www /opt/feedback /etc/feedback /var/lib/feedback
+chmod +x /opt/feedback/feedback-server
+```
+
+创建 `/etc/systemd/system/feedback.service`：
+
+```ini
+[Unit]
+Description=Feedback Server
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=www
+Group=www
+WorkingDirectory=/var/lib/feedback
+EnvironmentFile=/etc/feedback/.env
+ExecStart=/opt/feedback/feedback-server
+Restart=always
+RestartSec=5
+
+# 安全加固
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/feedback
+ReadOnlyPaths=/etc/feedback
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+
+```bash
+systemctl daemon-reload
+systemctl enable --now feedback
+systemctl status feedback
+```
+
 ### GitHub Release
 
 通过 GitHub Actions 手动构建发布：
