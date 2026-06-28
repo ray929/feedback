@@ -1,0 +1,9 @@
+.trae
+.vscode
+.codebuddy
+.temp
+.test
+db/
+*.db
+.env
+.htpasswd
