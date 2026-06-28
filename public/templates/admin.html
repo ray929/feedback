@@ -203,7 +203,7 @@
 
     <!-- Modal Overlay -->
     <div class="modal-overlay" x-show="showModal" style="display: none;" x-cloak>
-        <div class="modal-card" @click.away="closeModal()">
+        <div class="modal-card" @click.away="closeModal()" :style="modalType === 'share' ? 'max-width: 540px;' : ''">
             <h2 class="display-xs" style="margin-top:0; margin-bottom: 24px;" x-text="modalTitle"></h2>
             
             <!-- Create/Edit Form -->
@@ -233,31 +233,50 @@
             <!-- Share Modal (Preview + Embed) -->
             <template x-if="modalType === 'share'">
                 <div>
-                    <p style="margin-top:0; font-size: 14px; color: var(--colors-body);" x-text="t[lang].embedDesc"></p>
+                    <!-- Code View -->
+                    <template x-if="!sharePreview">
+                        <p style="margin-top:0; font-size: 14px; color: var(--colors-body);" x-text="t[lang].embedDesc"></p>
+                    </template>
                     
                     <div style="display: flex; gap: 12px; margin-bottom: 16px;">
                         <div class="input-group" style="flex:1; margin-bottom:0;">
                             <label x-text="t[lang].language"></label>
-                            <select x-model="shareLang" class="text-input" style="cursor:pointer;">
+                            <select x-model="shareLang" class="text-input" style="cursor:pointer;" :disabled="sharePreview">
                                 <option value="en">English</option>
                                 <option value="zh">中文</option>
                             </select>
                         </div>
                         <div class="input-group" style="flex:1; margin-bottom:0;">
                             <label x-text="t[lang].theme"></label>
-                            <select x-model="shareTheme" class="text-input" style="cursor:pointer;">
+                            <select x-model="shareTheme" class="text-input" style="cursor:pointer;" :disabled="sharePreview">
                                 <option value="light" x-text="t[lang].lightTheme"></option>
                                 <option value="dark" x-text="t[lang].darkTheme"></option>
                             </select>
                         </div>
                     </div>
 
-                    <div class="input-group">
-                        <label x-text="t[lang].embedCode"></label>
-                        <textarea class="text-input" rows="4" readonly x-text="getShareCode()" style="font-family: monospace; font-size: 13px; color: var(--colors-body-mid); background-color: var(--colors-canvas);"></textarea>
-                    </div>
-                    <div style="display: flex; gap: 12px; margin-top: 24px; justify-content: flex-end;">
-                        <button type="button" class="button-outline" style="width: auto;" @click="previewShare" x-text="t[lang].preview"></button>
+                    <!-- Embed Code -->
+                    <template x-if="!sharePreview">
+                        <div class="input-group">
+                            <label x-text="t[lang].embedCode"></label>
+                            <textarea id="share-code" class="text-input" rows="3" readonly x-text="getShareCode()" style="font-family: monospace; font-size: 13px; color: var(--colors-body-mid); background-color: var(--colors-canvas);"></textarea>
+                        </div>
+                    </template>
+
+                    <!-- Preview iframe -->
+                    <template x-if="sharePreview">
+                        <div style="border: 1px solid var(--colors-hairline); border-radius: 4px; overflow: hidden; height: 420px;">
+                            <iframe style="width:100%;height:100%;border:none;" :src="getPreviewUrl()"></iframe>
+                        </div>
+                    </template>
+
+                    <template x-if="copied">
+                        <div style="color: var(--colors-success); font-size: 13px; text-align: center; margin-top: 8px;" x-text="t[lang].copied"></div>
+                    </template>
+
+                    <div style="display: flex; gap: 8px; margin-top: 24px; justify-content: flex-end;">
+                        <button type="button" class="button-outline" style="width: auto;" @click="copyCode" x-show="!sharePreview" x-text="t[lang].copy"></button>
+                        <button type="button" class="button-outline" style="width: auto;" @click="sharePreview = !sharePreview" x-text="sharePreview ? t[lang].backToCode : t[lang].preview"></button>
                         <button type="button" class="button-outline" style="width: auto;" @click="closeModal()" x-text="t[lang].close"></button>
                     </div>
                 </div>
@@ -333,6 +352,8 @@ function adminApp() {
         saving: false,
         shareLang: 'en',
         shareTheme: 'light',
+        sharePreview: false,
+        copied: false,
         editingForm: {
             id: '',
             name: '',
@@ -363,6 +384,9 @@ function adminApp() {
                 theme: "Theme",
                 lightTheme: "☀ Light",
                 darkTheme: "🌙 Dark",
+                copy: "Copy",
+                copied: "✓ Copied!",
+                backToCode: "← Back to Code",
                 delete: "Delete",
                 logout: "Logout",
                 noForms: "No forms created yet.",
@@ -419,6 +443,9 @@ function adminApp() {
                 theme: "主题",
                 lightTheme: "☀ 浅色",
                 darkTheme: "🌙 深色",
+                copy: "复制",
+                copied: "✓ 已复制！",
+                backToCode: "← 返回代码",
                 delete: "删除",
                 logout: "退出",
                 noForms: "暂无表单。",
@@ -580,6 +607,8 @@ function adminApp() {
             this.editingForm = { id: form.id };
             this.shareLang = 'en';
             this.shareTheme = 'light';
+            this.sharePreview = false;
+            this.copied = false;
             this.showModal = true;
         },
 
@@ -597,6 +626,8 @@ function adminApp() {
 
         closeModal() {
             this.showModal = false;
+            this.sharePreview = false;
+            this.copied = false;
         },
 
         getShareCode() {
@@ -604,8 +635,17 @@ function adminApp() {
             return `<script src="${host}/embed.js" data-id="${this.editingForm.id}" data-theme="${this.shareTheme}" data-lang="${this.shareLang}"><\/script>`;
         },
 
-        previewShare() {
-            window.open(`/f/${this.editingForm.id}?theme=${this.shareTheme}&lang=${this.shareLang}`, '_blank');
+        getPreviewUrl() {
+            return `/f/${this.editingForm.id}?theme=${this.shareTheme}&lang=${this.shareLang}`;
+        },
+
+        copyCode() {
+            const textarea = document.getElementById('share-code');
+            textarea.select();
+            navigator.clipboard.writeText(textarea.value).then(() => {
+                this.copied = true;
+                setTimeout(() => this.copied = false, 2000);
+            });
         },
 
         async viewSubmissions(form) {
