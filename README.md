@@ -54,8 +54,8 @@ HTTP_PROXY="http://127.0.0.1:10808"   # 本地调试 Turnstile 时的代理
 
 # 邮件通知（Resend）
 RESEND_API_KEY="re_xxxx"
-DEFAULT_RECIPIENT="form@542500.xyz"
-FROM_EMAIL="hello@form.542500.xyz"
+DEFAULT_RECIPIENT="your-email@example.com"
+FROM_EMAIL="noreply@example.com"
 FROM_NAME="Form Messenger"
 
 # Redis
