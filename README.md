@@ -124,19 +124,19 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-serv
 
 ### 部署（systemd）
 
-以 `www` 用户运行，二进制文件放 `/opt/feedback/`，配置文件放 `/etc/feedback/`：
+所有文件放在 `/data/www/feedback/`，以 `www` 用户运行：
 
 ```bash
 # 创建目录和用户
-mkdir -p /opt/feedback /etc/feedback /var/lib/feedback/data
+mkdir -p /data/www/feedback
 useradd -r -s /sbin/nologin www
 
-# 上传二进制文件和配置
-cp feedback-server /opt/feedback/
-cp .env /etc/feedback/
-cp .htpasswd /etc/feedback/
-chown -R www:www /opt/feedback /etc/feedback /var/lib/feedback
-chmod +x /opt/feedback/feedback-server
+# 上传文件
+cp feedback-server /data/www/feedback/
+cp .env /data/www/feedback/
+cp .htpasswd /data/www/feedback/
+chown -R www:www /data/www/feedback
+chmod +x /data/www/feedback/feedback-server
 ```
 
 创建 `/etc/systemd/system/feedback.service`：
@@ -150,9 +150,9 @@ After=network.target redis.service
 Type=simple
 User=www
 Group=www
-WorkingDirectory=/var/lib/feedback
-EnvironmentFile=/etc/feedback/.env
-ExecStart=/opt/feedback/feedback-server
+WorkingDirectory=/data/www/feedback
+EnvironmentFile=/data/www/feedback/.env
+ExecStart=/data/www/feedback/feedback-server
 Restart=always
 RestartSec=5
 
@@ -160,8 +160,7 @@ RestartSec=5
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/feedback
-ReadOnlyPaths=/etc/feedback
+ReadWritePaths=/data/www/feedback
 PrivateTmp=yes
 
 [Install]
