@@ -44,7 +44,6 @@
 
 ```env
 # 应用配置
-APP_ENV="development"              # development 或 production
 SITE_NAME="Forms"
 LISTEN_ADDR="0.0.0.0:8010"          # 监听地址，留空则使用 PORT
 
