@@ -91,7 +91,7 @@
     <template x-if="isAuthenticated">
         <div class="container">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h1 class="display-sm" style="margin-top:0;" x-text="t[lang].submissionsTitle + formName"></h1>
+                <h1 class="display-sm" style="margin-top:0;" x-text="lang === 'zh' ? formName + t[lang].submissionsTitle : t[lang].submissionsTitle + formName"></h1>
                 <button class="button-outline" style="width: auto;" @click="logout" x-text="t[lang].logout"></button>
             </div>
             
@@ -223,7 +223,7 @@ function queryApp() {
             },
             zh: {
                 viewData: "查看数据",
-                submissionsTitle: "提交数据: ",
+                submissionsTitle: "的提交",
                 queryPassword: "查询密码",
                 viewBtn: "查看提交",
                 authenticating: "验证中...",

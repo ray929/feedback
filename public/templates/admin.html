@@ -163,7 +163,7 @@
                     <div style="margin-bottom: 16px;">
                         <a href="#" class="action-link" @click.prevent="viewingForm = null; submissions = []" x-text="t[lang].backToForms"></a>
                     </div>
-                    <h2 class="display-xs" style="margin-top:0;" x-text="t[lang].submissionsOf + viewingForm.name"></h2>
+                    <h2 class="display-xs" style="margin-top:0;" x-text="lang === 'zh' ? viewingForm.name + t[lang].submissionsOf : t[lang].submissionsOf + viewingForm.name"></h2>
                     
                     <div style="overflow-x: auto;">
                         <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px;">
@@ -414,7 +414,7 @@ function adminApp() {
                 noForms: "No forms created yet.",
                 loadingForms: "Loading forms...",
                 backToForms: "← Back to Forms",
-                submissionsOf: "Submissions: ",
+                submissionsOf: "Submissions of ",
                 date: "Date",
                 contact: "Contact",
                 ip: "IP",
@@ -476,7 +476,7 @@ function adminApp() {
                 noForms: "暂无表单。",
                 loadingForms: "加载中...",
                 backToForms: "← 返回列表",
-                submissionsOf: "提交数据: ",
+                submissionsOf: "的提交",
                 date: "日期",
                 contact: "联系方式",
                 ip: "IP",
@@ -631,14 +631,14 @@ function adminApp() {
             this.modalType = 'edit';
             this.modalTitle = this.lang === 'zh' ? '编辑表单' : 'Edit Form';
             // copy data, leave password empty (it will only update if filled)
-            this.editingForm = { id: form.id, name: form.name, notify_email: form.notify_email, query_password: '' };
+            this.editingForm = { id: form.uuid, name: form.name, notify_email: form.notify_email, query_password: '' };
             this.showModal = true;
         },
 
         openShareModal(form) {
             this.modalType = 'share';
             this.modalTitle = this.lang === 'zh' ? '分享表单' : 'Share Form';
-            this.editingForm = { id: form.id };
+            this.editingForm = { id: form.uuid };
             this.shareLang = 'en';
             this.shareTheme = 'light';
             this.sharePreview = false;
@@ -698,7 +698,7 @@ function adminApp() {
             this.loadingSubmissions = true;
             this.submissions = [];
             try {
-                const res = await fetch(`/api/admin/forms/${this.viewingForm.id}/submissions?page=${this.subsPage}&limit=${this.subsLimit}`);
+                const res = await fetch(`/api/admin/forms/${this.viewingForm.uuid}/submissions?page=${this.subsPage}&limit=${this.subsLimit}`);
                 if (res.ok) {
                     const data = await res.json();
                     this.submissions = data.items;

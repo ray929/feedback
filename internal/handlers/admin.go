@@ -45,7 +45,7 @@ func GetForms(c echo.Context) error {
 	rows, err := db.DB.Query(`
 		SELECT f.id, f.uuid, f.name, f.notify_email, f.created_at, 
 		       COALESCE((SELECT COUNT(*) FROM submissions s WHERE s.form_id = f.id), 0) as submission_count
-		FROM forms f ORDER BY f.created_at DESC LIMIT ? OFFSET ?`, limit, offset)
+		FROM forms f ORDER BY f.id DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Database error"})
 	}
@@ -168,7 +168,7 @@ func GetSubmissions(c echo.Context) error {
 	var total int
 	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", formIntID).Scan(&total)
 
-	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", formIntID, limit, offset)
+	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY id DESC LIMIT ? OFFSET ?", formIntID, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Database error"})
 	}

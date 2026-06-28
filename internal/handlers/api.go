@@ -189,7 +189,7 @@ func fetchSubmissionsByUUID(formUUID string, page, limit int) models.PaginatedRe
 	db.DB.QueryRow("SELECT id FROM forms WHERE uuid = ?", formUUID).Scan(&formIntID)
 	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", formIntID).Scan(&total)
 
-	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", formIntID, limit, offset)
+	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY id DESC LIMIT ? OFFSET ?", formIntID, limit, offset)
 	if err != nil {
 		return models.PaginatedResponse{Items: []models.Submission{}, Total: 0, Page: page, Limit: limit}
 	}
