@@ -1,12 +1,12 @@
-name: Build Linux Binary
+name: Release
 
 on:
-  push:
-    branches: [main, dev]
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.0.0)'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -24,7 +24,7 @@ jobs:
 
       - name: Build
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-server main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-server .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -32,8 +32,14 @@ jobs:
           name: feedback-server-linux-amd64
           path: feedback-server
 
-      - name: Upload to release (if tag)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Create tag
+        run: |
+          git tag v${{ inputs.version }}
+          git push origin v${{ inputs.version }}
+
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ inputs.version }}
           files: feedback-server
+          make_latest: true
