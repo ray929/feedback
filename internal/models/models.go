@@ -3,11 +3,19 @@ package models
 import "time"
 
 type Form struct {
-	ID            string    `json:"id" db:"id"`
-	Name          string    `json:"name" db:"name"`
-	QueryPassword string    `json:"-" db:"query_password"` // don't expose password hash in JSON
-	NotifyEmail   string    `json:"notify_email" db:"notify_email"`
-	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	ID              string    `json:"id" db:"id"`
+	Name            string    `json:"name" db:"name"`
+	QueryPassword   string    `json:"-" db:"query_password"` // don't expose password hash in JSON
+	NotifyEmail     string    `json:"notify_email" db:"notify_email"`
+	SubmissionCount int       `json:"submission_count"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+}
+
+type PaginatedResponse struct {
+	Items interface{} `json:"items"`
+	Total int         `json:"total"`
+	Page  int         `json:"page"`
+	Limit int         `json:"limit"`
 }
 
 type Submission struct {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"feedback/internal/db"
 	"feedback/internal/models"
@@ -18,7 +19,24 @@ type FormPayload struct {
 }
 
 func GetForms(c echo.Context) error {
-	rows, err := db.DB.Query("SELECT id, name, notify_email, created_at FROM forms ORDER BY created_at DESC")
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	// Get total count
+	var total int
+	db.DB.QueryRow("SELECT COUNT(*) FROM forms").Scan(&total)
+
+	rows, err := db.DB.Query(`
+		SELECT f.id, f.name, f.notify_email, f.created_at, 
+		       COALESCE((SELECT COUNT(*) FROM submissions s WHERE s.form_id = f.id), 0) as submission_count
+		FROM forms f ORDER BY f.created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Database error"})
 	}
@@ -27,18 +45,22 @@ func GetForms(c echo.Context) error {
 	var forms []models.Form
 	for rows.Next() {
 		var f models.Form
-		if err := rows.Scan(&f.ID, &f.Name, &f.NotifyEmail, &f.CreatedAt); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.NotifyEmail, &f.CreatedAt, &f.SubmissionCount); err != nil {
 			continue
 		}
 		forms = append(forms, f)
 	}
 
-	// Ensure we return an empty array instead of null if no forms exist
 	if forms == nil {
 		forms = []models.Form{}
 	}
 
-	return c.JSON(http.StatusOK, forms)
+	return c.JSON(http.StatusOK, models.PaginatedResponse{
+		Items: forms,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
 }
 
 func CreateForm(c echo.Context) error {
@@ -120,7 +142,20 @@ func DeleteForm(c echo.Context) error {
 
 func GetSubmissions(c echo.Context) error {
 	id := c.Param("id")
-	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC", id)
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit < 1 {
+		limit = 20
+	}
+	offset := (page - 1) * limit
+
+	var total int
+	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", id).Scan(&total)
+
+	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", id, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Database error"})
 	}
@@ -144,5 +179,10 @@ func GetSubmissions(c echo.Context) error {
 		submissions = []models.Submission{}
 	}
 
-	return c.JSON(http.StatusOK, submissions)
+	return c.JSON(http.StatusOK, models.PaginatedResponse{
+		Items: submissions,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	})
 }

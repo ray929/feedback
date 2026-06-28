@@ -118,6 +118,7 @@
                         <tr style="border-bottom: 1px solid var(--colors-hairline);">
                             <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].name"></th>
                             <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].id"></th>
+                            <th class="caption-mono" style="padding: 12px 8px; text-align: center;" x-text="t[lang].submissions"></th>
                             <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].actions"></th>
                         </tr>
                     </thead>
@@ -126,6 +127,7 @@
                             <tr style="border-bottom: 1px solid var(--colors-hairline);">
                                 <td style="padding: 16px 8px;" x-text="form.name"></td>
                                 <td style="padding: 16px 8px; font-family: monospace; color: var(--colors-body-mid);" x-text="form.id"></td>
+                                <td style="padding: 16px 8px; text-align: center; font-family: monospace; color: var(--colors-body-mid);" x-text="form.submission_count"></td>
                                 <td style="padding: 16px 8px;">
                                     <a href="#" class="action-link" @click.prevent="openShareModal(form)" x-text="t[lang].share"></a>
                                     <a href="#" class="action-link" @click.prevent="window.open('/q/' + form.id, '_blank')" x-text="t[lang].queryLink"></a>
@@ -137,16 +139,22 @@
                         </template>
                         <template x-if="forms.length === 0 && !loadingForms">
                             <tr>
-                                <td colspan="3" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].noForms"></td>
+                                <td colspan="4" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].noForms"></td>
                             </tr>
                         </template>
                         <template x-if="loadingForms">
                             <tr>
-                                <td colspan="3" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].loadingForms"></td>
+                                <td colspan="4" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].loadingForms"></td>
                             </tr>
                         </template>
                     </tbody>
                 </table>
+                <!-- Forms Pagination -->
+                <div x-show="formsTotal > formsLimit" style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+                    <button class="button-outline" style="width: auto;" :disabled="formsPage <= 1" @click="goFormsPage(formsPage - 1)" x-text="t[lang].prev"></button>
+                    <span style="display: flex; align-items: center; font-size: 13px; color: var(--colors-body-mid);" x-text="formsPage + ' / ' + Math.ceil(formsTotal / formsLimit)"></span>
+                    <button class="button-outline" style="width: auto;" :disabled="formsPage >= Math.ceil(formsTotal / formsLimit)" @click="goFormsPage(formsPage + 1)" x-text="t[lang].next"></button>
+                </div>
             </template>
 
             <!-- Submissions View -->
@@ -196,6 +204,13 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <!-- Submissions Pagination -->
+                    <div x-show="subsTotal > subsLimit" style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+                        <button class="button-outline" style="width: auto;" :disabled="subsPage <= 1" @click="goSubsPage(subsPage - 1)" x-text="t[lang].prev"></button>
+                        <span style="display: flex; align-items: center; font-size: 13px; color: var(--colors-body-mid);" x-text="subsPage + ' / ' + Math.ceil(subsTotal / subsLimit)"></span>
+                        <button class="button-outline" style="width: auto;" :disabled="subsPage >= Math.ceil(subsTotal / subsLimit)" @click="goSubsPage(subsPage + 1)" x-text="t[lang].next"></button>
+                    </div>
                 </div>
             </template>
         </div>
@@ -241,14 +256,14 @@
                     <div style="display: flex; gap: 12px; margin-bottom: 16px;">
                         <div class="input-group" style="flex:1; margin-bottom:0;">
                             <label x-text="t[lang].language"></label>
-                            <select x-model="shareLang" class="text-input" style="cursor:pointer;" :disabled="sharePreview">
+                            <select x-model="shareLang" class="text-input" style="cursor:pointer;">
                                 <option value="en">English</option>
                                 <option value="zh">中文</option>
                             </select>
                         </div>
                         <div class="input-group" style="flex:1; margin-bottom:0;">
                             <label x-text="t[lang].theme"></label>
-                            <select x-model="shareTheme" class="text-input" style="cursor:pointer;" :disabled="sharePreview">
+                            <select x-model="shareTheme" class="text-input" style="cursor:pointer;">
                                 <option value="light" x-text="t[lang].lightTheme"></option>
                                 <option value="dark" x-text="t[lang].darkTheme"></option>
                             </select>
@@ -333,16 +348,22 @@ function adminApp() {
         isLoggedIn: false, // We can initialize this based on cookie check endpoint later
         loading: false,
         loadingForms: false,
+        forms: [],
+        formsPage: 1,
+        formsLimit: 20,
+        formsTotal: 0,
         password: '',
         error: '',
         showCaptcha: false,
         turnstileWidgetId: null,
-        forms: [],
         
         // Submissions view state
         viewingForm: null,
         submissions: [],
         loadingSubmissions: false,
+        subsPage: 1,
+        subsLimit: 20,
+        subsTotal: 0,
         detailSub: {},
 
         // Modal state
@@ -373,6 +394,7 @@ function adminApp() {
                 newForm: "New Form",
                 name: "Name",
                 id: "ID",
+                submissions: "Submissions",
                 actions: "Actions",
                 preview: "Preview",
                 share: "Share",
@@ -419,7 +441,9 @@ function adminApp() {
                 deleteFailed: "Failed to delete form",
                 networkError: "Network error",
                 completeCaptcha: "Please complete the captcha",
-                enterPassword: "Please enter a password"
+                enterPassword: "Please enter a password",
+                prev: "← Prev",
+                next: "Next →"
             },
             zh: {
                 adminAccess: "管理后台",
@@ -432,6 +456,7 @@ function adminApp() {
                 newForm: "新建表单",
                 name: "名称",
                 id: "编号",
+                submissions: "提交数",
                 actions: "操作",
                 preview: "预览",
                 share: "分享",
@@ -478,7 +503,9 @@ function adminApp() {
                 deleteFailed: "删除失败",
                 networkError: "网络错误",
                 completeCaptcha: "请完成人机验证",
-                enterPassword: "请输入密码"
+                enterPassword: "请输入密码",
+                prev: "← 上一页",
+                next: "下一页 →"
             }
         },
 
@@ -572,9 +599,11 @@ function adminApp() {
         async fetchForms() {
             this.loadingForms = true;
             try {
-                const res = await fetch('/api/admin/forms');
+                const res = await fetch(`/api/admin/forms?page=${this.formsPage}&limit=${this.formsLimit}`);
                 if (res.ok) {
-                    this.forms = await res.json();
+                    const data = await res.json();
+                    this.forms = data.items;
+                    this.formsTotal = data.total;
                     this.isLoggedIn = true;
                 } else if (res.status === 401) {
                     this.isLoggedIn = false;
@@ -584,6 +613,11 @@ function adminApp() {
             } finally {
                 this.loadingForms = false;
             }
+        },
+
+        goFormsPage(p) {
+            this.formsPage = p;
+            this.fetchForms();
         },
 
         createNewForm() {
@@ -650,12 +684,25 @@ function adminApp() {
 
         async viewSubmissions(form) {
             this.viewingForm = form;
+            this.subsPage = 1;
+            this.subsTotal = 0;
+            this.loadSubmissionsPage();
+        },
+
+        goSubsPage(p) {
+            this.subsPage = p;
+            this.loadSubmissionsPage();
+        },
+
+        async loadSubmissionsPage() {
             this.loadingSubmissions = true;
             this.submissions = [];
             try {
-                const res = await fetch(`/api/admin/forms/${form.id}/submissions`);
+                const res = await fetch(`/api/admin/forms/${this.viewingForm.id}/submissions?page=${this.subsPage}&limit=${this.subsLimit}`);
                 if (res.ok) {
-                    this.submissions = await res.json();
+                    const data = await res.json();
+                    this.submissions = data.items;
+                    this.subsTotal = data.total;
                 }
             } catch (err) {
                 console.error(err);

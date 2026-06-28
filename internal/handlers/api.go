@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -117,13 +118,21 @@ type QueryRequest struct {
 
 func QueryFormSubmissions(c echo.Context) error {
 	id := c.Param("id")
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(c.QueryParam("limit"))
+	if limit < 1 {
+		limit = 20
+	}
 
 	// 0. Check if already authenticated via cookie
 	cookie, err := c.Cookie("query_session_" + id)
 	if err == nil && cookie.Value != "" && feedbackRedis.ValidateQuerySession(id, cookie.Value) {
 		// Cookie valid, return submissions directly
-		submissions := fetchSubmissions(id)
-		return c.JSON(http.StatusOK, submissions)
+		resp := fetchSubmissions(id, page, limit)
+		return c.JSON(http.StatusOK, resp)
 	}
 
 	var req QueryRequest
@@ -169,14 +178,19 @@ func QueryFormSubmissions(c echo.Context) error {
 	})
 
 	// 4. Return submissions
-	submissions := fetchSubmissions(id)
-	return c.JSON(http.StatusOK, submissions)
+	resp := fetchSubmissions(id, page, limit)
+	return c.JSON(http.StatusOK, resp)
 }
 
-func fetchSubmissions(formID string) []models.Submission {
-	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC", formID)
+func fetchSubmissions(formID string, page, limit int) models.PaginatedResponse {
+	offset := (page - 1) * limit
+
+	var total int
+	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", formID).Scan(&total)
+
+	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", formID, limit, offset)
 	if err != nil {
-		return []models.Submission{}
+		return models.PaginatedResponse{Items: []models.Submission{}, Total: 0, Page: page, Limit: limit}
 	}
 	defer rows.Close()
 
@@ -197,7 +211,13 @@ func fetchSubmissions(formID string) []models.Submission {
 	if submissions == nil {
 		submissions = []models.Submission{}
 	}
-	return submissions
+
+	return models.PaginatedResponse{
+		Items: submissions,
+		Total: total,
+		Page:  page,
+		Limit: limit,
+	}
 }
 
 func QueryLogout(c echo.Context) error {

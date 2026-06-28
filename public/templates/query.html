@@ -129,6 +129,13 @@
                     </tbody>
                 </table>
             </div>
+
+            <!-- Pagination -->
+            <div x-show="total > limit" style="display: flex; justify-content: center; gap: 8px; margin-top: 16px;">
+                <button class="button-outline" style="width: auto;" :disabled="page <= 1" @click="goPage(page - 1)" x-text="t[lang].prev"></button>
+                <span style="display: flex; align-items: center; font-size: 13px; color: var(--colors-body-mid);" x-text="page + ' / ' + Math.ceil(total / limit)"></span>
+                <button class="button-outline" style="width: auto;" :disabled="page >= Math.ceil(total / limit)" @click="goPage(page + 1)" x-text="t[lang].next"></button>
+            </div>
         </div>
     </template>
 
@@ -188,6 +195,9 @@ function queryApp() {
         showCaptcha: false,
         turnstileWidgetId: null,
         submissions: [],
+        page: 1,
+        limit: 20,
+        total: 0,
         showModal: false,
         detailSub: {},
 
@@ -207,7 +217,9 @@ function queryApp() {
                 content: "Content",
                 noSubmissions: "No submissions yet.",
                 enterPassword: "Please enter the query password",
-                completeCaptcha: "Please complete the captcha"
+                completeCaptcha: "Please complete the captcha",
+                prev: "← Prev",
+                next: "Next →"
             },
             zh: {
                 viewData: "查看数据",
@@ -224,7 +236,9 @@ function queryApp() {
                 content: "内容",
                 noSubmissions: "暂无提交。",
                 enterPassword: "请输入查询密码",
-                completeCaptcha: "请完成人机验证"
+                completeCaptcha: "请完成人机验证",
+                prev: "← 上一页",
+                next: "下一页 →"
             }
         },
 
@@ -238,18 +252,36 @@ function queryApp() {
         },
 
         async tryRestoreSession() {
+            const ok = await this.fetchSubmissionsData(true);
+            if (ok) this.isAuthenticated = true;
+        },
+
+        async fetchSubmissionsData(isRestore) {
             try {
-                const res = await fetch(`/api/query/${this.formId}`, {
+                const body = isRestore 
+                    ? { password: '', turnstile_token: '' }
+                    : { password: this.password, turnstile_token: window.turnstileToken };
+                const res = await fetch(`/api/query/${this.formId}?page=${this.page}&limit=${this.limit}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: '', turnstile_token: '' }) // dummy body, server checks cookie first
+                    body: JSON.stringify(body)
                 });
                 if (res.ok) {
-                    this.submissions = await res.json();
-                    this.isAuthenticated = true;
+                    const data = await res.json();
+                    this.submissions = data.items;
+                    this.total = data.total;
+                    return true;
                 }
+                return false;
             } catch (e) {
-                // Cookie not valid, stay on login screen
+                return false;
+            }
+        },
+
+        goPage(p) {
+            this.page = p;
+            if (this.isAuthenticated) {
+                this.fetchSubmissionsData(true);
             }
         },
 
@@ -297,21 +329,11 @@ function queryApp() {
             // Actually submit
             this.loading = true;
             try {
-                const res = await fetch(`/api/query/${this.formId}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        password: this.password,
-                        turnstile_token: window.turnstileToken
-                    })
-                });
-                
-                if (res.ok) {
-                    this.submissions = await res.json();
+                const ok = await this.fetchSubmissionsData(false);
+                if (ok) {
                     this.isAuthenticated = true;
                 } else {
-                    const data = await res.json();
-                    this.error = data.message || 'Authentication failed';
+                    this.error = this.t[this.lang].enterPassword;
                     if (window.turnstile && this.turnstileWidgetId !== null) {
                         turnstile.remove(this.turnstileWidgetId);
                     }
