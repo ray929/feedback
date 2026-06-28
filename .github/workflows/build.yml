@@ -24,9 +24,6 @@ jobs:
 
       - name: Build
         run: |
-          echo "=== PWD ===" && pwd
-          echo "=== ls ===" && ls -la
-          echo "=== go.mod ===" && head -5 go.mod
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-server .
 
       - name: Upload artifact

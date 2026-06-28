@@ -3,8 +3,8 @@
 .codebuddy
 .temp
 .test
-db/
+/db/
 *.db
 .env
 .htpasswd
-data/
+/data/
