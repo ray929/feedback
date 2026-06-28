@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"feedback/internal/db"
 	"feedback/internal/handlers"
@@ -47,12 +48,16 @@ func setProcessTitle(title string) {
 }
 
 func main() {
-	// 获取程序自身所在目录，所有相对路径均以此为基准
+	// 获取程序自身所在目录，所有相对路径均以此为基准。
+	// go run / air 会把可执行文件放到临时目录，此时回退到工作目录。
 	execDir, err := os.Executable()
 	if err != nil {
 		log.Fatalf("Failed to get executable path: %v", err)
 	}
 	execDir = filepath.Dir(execDir)
+	if strings.Contains(execDir, os.TempDir()) || strings.Contains(execDir, "go-build") {
+		execDir, _ = os.Getwd()
+	}
 	log.Printf("Executable dir: %s", execDir)
 
 	// 加载环境变量（从程序所在目录）
