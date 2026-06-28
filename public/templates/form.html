@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="{{.Lang}}" data-theme="{{.Theme}}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&family=Inter:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <!-- Turnstile -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+</head>
+<body>
+
+<div x-data="feedbackForm()" x-init="initObserver()" class="form-container">
+    <template x-if="status === 'success'">
+        <div class="success-state">
+            <h2 class="caption-mono" x-text="i18n.successTitle"></h2>
+            <p x-text="i18n.successDesc"></p>
+        </div>
+    </template>
+
+    <template x-if="status !== 'success'">
+        <form @submit.prevent="submitForm" class="feedback-form">
+            
+            <div class="input-group">
+                <label for="name" x-text="i18n.name"></label>
+                <input type="text" id="name" x-model="formData.name" class="text-input" :class="{'has-error': errors.name}">
+                <template x-if="errors.name"><span class="error-msg" x-text="errors.name"></span></template>
+            </div>
+
+            <div class="input-group">
+                <label for="email" x-text="i18n.email"></label>
+                <input type="email" id="email" x-model="formData.email" class="text-input" :class="{'has-error': errors.contact}">
+            </div>
+
+            <div class="input-group">
+                <label for="phone" x-text="i18n.phone"></label>
+                <input type="tel" id="phone" x-model="formData.phone" class="text-input" :class="{'has-error': errors.contact}">
+                <template x-if="errors.contact"><span class="error-msg" x-text="errors.contact"></span></template>
+            </div>
+
+            <div class="input-group">
+                <label for="content" x-text="i18n.content"></label>
+                <textarea id="content" x-model="formData.content" rows="4" class="text-input" :class="{'has-error': errors.content}"></textarea>
+                <template x-if="errors.content"><span class="error-msg" x-text="errors.content"></span></template>
+            </div>
+
+            <!-- Turnstile Widget (Hidden until submit clicked) -->
+            <div class="input-group" x-show="siteKey && showCaptcha" style="margin-top: 16px;">
+                 <div id="turnstile-container"></div>
+                 <template x-if="errors.turnstile"><span class="error-msg" x-text="errors.turnstile"></span></template>
+            </div>
+
+            <button type="submit" class="button-outline" :disabled="loading || showCaptcha" style="margin-top: 24px;">
+                <span x-show="!loading && !showCaptcha" x-text="i18n.submit"></span>
+                <span x-show="showCaptcha" x-text="i18n.verify"></span>
+                <span x-show="loading && !showCaptcha" x-text="i18n.submitting"></span>
+            </button>
+
+            <template x-if="errors.server">
+                <div class="error-msg" style="margin-top:16px; text-align:center;" x-text="errors.server"></div>
+            </template>
+        </form>
+    </template>
+</div>
+
+<script>
+window.turnstileToken = '';
+function onTurnstileSuccess(token) {
+    window.turnstileToken = token;
+    window.dispatchEvent(new CustomEvent('turnstile-resolved'));
+}
+function onTurnstileError() {
+    window.turnstileToken = '';
+}
+
+function feedbackForm() {
+    const lang = '{{.Lang}}';
+    const translations = {
+        en: {
+            name: "Name",
+            email: "Email",
+            phone: "Phone Number",
+            content: "Message",
+            submit: "Submit Feedback",
+            verify: "Verify to submit...",
+            submitting: "Submitting...",
+            successTitle: "Received",
+            successDesc: "Thank you for your feedback.",
+            errReqName: "Name is required.",
+            errReqContact: "Please provide either an email or a phone number.",
+            errReqContent: "Message is required.",
+            errReqCaptcha: "Please complete the captcha.",
+            errServer: "Something went wrong. Please try again."
+        },
+        zh: {
+            name: "姓名",
+            email: "电子邮箱",
+            phone: "电话号码",
+            content: "反馈内容",
+            submit: "提交反馈",
+            verify: "请先完成验证...",
+            submitting: "提交中...",
+            successTitle: "已收到",
+            successDesc: "感谢您的反馈，我们将尽快处理。",
+            errReqName: "请填写姓名",
+            errReqContact: "电子邮箱和电话号码请至少填写一项",
+            errReqContent: "请填写反馈内容",
+            errReqCaptcha: "请完成人机验证",
+            errServer: "提交失败，请重试"
+        }
+    };
+
+    return {
+        formId: '{{.FormID}}',
+        sourceUrl: '{{.SourceURL}}',
+        siteKey: '{{.SiteKey}}',
+        i18n: translations[lang] || translations.en,
+        status: 'idle', // idle, loading, success
+        loading: false,
+        showCaptcha: false,
+        turnstileWidgetId: null,
+        formData: {
+            name: '',
+            email: '',
+            phone: '',
+            content: ''
+        },
+        errors: {},
+        
+        initObserver() {
+            // Setup ResizeObserver to postMessage to parent continuously
+            const resizeObserver = new ResizeObserver(entries => {
+                this.sendHeight();
+            });
+            resizeObserver.observe(document.body);
+            
+            window.addEventListener('turnstile-resolved', () => {
+                this.errors.turnstile = null;
+                this.sendHeight();
+                // 自动提交表单
+                this.submitForm();
+            });
+        },
+
+        sendHeight() {
+            // Include some bottom margin to prevent scrollbars
+            const height = document.body.scrollHeight;
+            window.parent.postMessage({
+                type: 'feedback-resize',
+                formId: this.formId,
+                height: height
+            }, '*');
+        },
+
+        validate() {
+            this.errors = {};
+            let valid = true;
+            if (!this.formData.name.trim()) {
+                this.errors.name = this.i18n.errReqName;
+                valid = false;
+            }
+            if (!this.formData.email.trim() && !this.formData.phone.trim()) {
+                this.errors.contact = this.i18n.errReqContact;
+                valid = false;
+            }
+            if (!this.formData.content.trim()) {
+                this.errors.content = this.i18n.errReqContent;
+                valid = false;
+            }
+            
+            // Note: We don't validate captcha here anymore because it might not be rendered yet.
+            // Captcha validation happens during the final submit phase.
+            
+            // Give DOM time to update errors, then send height
+            setTimeout(() => this.sendHeight(), 50);
+            return valid;
+        },
+
+        async submitForm() {
+            // First step: local validation
+            if (!this.validate()) return;
+
+            // Second step: Show Turnstile if not solved
+            if (this.siteKey && !window.turnstileToken) {
+                if (!this.showCaptcha) {
+                    this.showCaptcha = true;
+                    // Wait for DOM to show the container, then render widget explicitly
+                    setTimeout(() => {
+                        this.sendHeight();
+                        if (window.turnstile && this.turnstileWidgetId === null) {
+                            this.turnstileWidgetId = turnstile.render('#turnstile-container', {
+                                sitekey: this.siteKey,
+                                callback: onTurnstileSuccess
+                            });
+                        }
+                    }, 50);
+                    return; // Stop here, user needs to click the captcha
+                } else {
+                    this.errors.turnstile = this.i18n.errReqCaptcha;
+                    this.sendHeight();
+                    return;
+                }
+            }
+
+            // Third step: Actually submit to server
+            this.loading = true;
+            this.errors = {};
+
+            try {
+                const response = await fetch('/api/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        form_id: this.formId,
+                        name: this.formData.name,
+                        email: this.formData.email,
+                        phone: this.formData.phone,
+                        content: this.formData.content,
+                        source_url: this.sourceUrl,
+                        turnstile_token: window.turnstileToken
+                    })
+                });
+
+                const resData = await response.json();
+
+                if (!response.ok) {
+                    this.errors.server = resData.message || this.i18n.errServer;
+                    if (window.turnstile && this.turnstileWidgetId !== null) {
+                        turnstile.remove(this.turnstileWidgetId);
+                    }
+                    window.turnstileToken = '';
+                    this.showCaptcha = false;
+                    this.turnstileWidgetId = null;
+                } else {
+                    this.status = 'success';
+                }
+            } catch (err) {
+                this.errors.server = this.i18n.errServer;
+                if (window.turnstile && this.turnstileWidgetId !== null) {
+                    turnstile.reset(this.turnstileWidgetId);
+                }
+                window.turnstileToken = '';
+                this.showCaptcha = false;
+                this.turnstileWidgetId = null;
+            } finally {
+                this.loading = false;
+                setTimeout(() => this.sendHeight(), 50);
+            }
+        }
+    }
+}
+</script>
+</body>
+</html>

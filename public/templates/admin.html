@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Feedback Forms</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&family=Inter:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <!-- Turnstile -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+    <style>
+        body {
+            background-color: var(--colors-canvas-soft); /* light mode body */
+            padding: 20px;
+        }
+        .admin-container {
+            max-width: 900px;
+            margin: 40px auto;
+            background-color: var(--colors-canvas);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 32px;
+        }
+        h1.display-sm {
+            font-size: 32px;
+            font-weight: 400;
+            letter-spacing: -0.6px;
+            margin-top: 0;
+            margin-bottom: 24px;
+        }
+        .login-box {
+            max-width: 400px;
+            margin: 100px auto;
+            background-color: var(--colors-canvas);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 32px;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50;
+        }
+        .modal-card {
+            background: var(--colors-canvas-card);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 24px;
+            width: 100%;
+            max-width: 480px;
+        }
+        .action-link {
+            color: var(--colors-ink);
+            text-decoration: underline;
+            margin-right: 12px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Login State -->
+<div x-data="adminApp()" x-init="initObserver()" class="app-wrapper">
+
+    <!-- Language Toggle -->
+    <div style="position: fixed; top: 12px; right: 16px; z-index: 100; display: flex; gap: 8px;">
+        <a :href="currentUrlWithLang('en')" class="action-link" :style="lang === 'en' ? 'font-weight: 700;' : ''">EN</a>
+        <span style="color: var(--colors-body-mid);">/</span>
+        <a :href="currentUrlWithLang('zh')" class="action-link" :style="lang === 'zh' ? 'font-weight: 700;' : ''">中文</a>
+    </div>
+    
+    <!-- Login Form -->
+    <template x-if="!isLoggedIn">
+        <div class="login-box">
+            <h1 class="display-sm" x-text="t[lang].adminAccess"></h1>
+            <form @submit.prevent="login">
+                <div class="input-group">
+                    <label for="password" x-text="t[lang].password"></label>
+                    <input type="password" id="password" x-model="password" class="text-input">
+                </div>
+                <div class="input-group" x-show="siteKey && showCaptcha">
+                    <div id="admin-turnstile-container"></div>
+                </div>
+                <button type="submit" class="button-outline" :disabled="loading || showCaptcha">
+                    <span x-text="showCaptcha ? t[lang].verifyContinue : (loading ? t[lang].authenticating : t[lang].enter)"></span>
+                </button>
+                <template x-if="error">
+                    <div class="error-msg" style="margin-top:16px; text-align:center;" x-text="error"></div>
+                </template>
+            </form>
+        </div>
+    </template>
+
+    <!-- Dashboard -->
+    <template x-if="isLoggedIn">
+        <div class="admin-container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1 class="display-sm" x-text="t[lang].forms"></h1>
+                <div style="display: flex; gap: 8px;">
+                    <button class="button-outline" style="width: auto;" @click="createNewForm" x-text="t[lang].newForm"></button>
+                    <button class="button-outline" style="width: auto;" @click="logout" x-text="t[lang].logout"></button>
+                </div>
+            </div>
+            
+            <p class="caption-mono" style="margin-bottom: 24px;" x-text="t[lang].manageDesc"></p>
+
+            <template x-if="!viewingForm">
+                <table style="width: 100%; border-collapse: collapse; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].name"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].id"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].actions"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="form in forms" :key="form.id">
+                            <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                                <td style="padding: 16px 8px;" x-text="form.name"></td>
+                                <td style="padding: 16px 8px; font-family: monospace; color: var(--colors-body-mid);" x-text="form.id"></td>
+                                <td style="padding: 16px 8px;">
+                                    <a href="#" class="action-link" @click.prevent="openPreview(form.id)" x-text="t[lang].preview"></a>
+                                    <a href="#" class="action-link" @click.prevent="window.open('/q/' + form.id, '_blank')" x-text="t[lang].queryLink"></a>
+                                    <a href="#" class="action-link" @click.prevent="viewSubmissions(form)" x-text="t[lang].data"></a>
+                                    <a href="#" class="action-link" @click.prevent="openEditModal(form)" x-text="t[lang].edit"></a>
+                                    <a href="#" class="action-link" @click.prevent="openEmbedModal(form)" x-text="t[lang].embedCode"></a>
+                                    <a href="#" class="action-link" style="color: var(--colors-error);" @click.prevent="deleteForm(form.id)" x-text="t[lang].delete"></a>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="forms.length === 0 && !loadingForms">
+                            <tr>
+                                <td colspan="3" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].noForms"></td>
+                            </tr>
+                        </template>
+                        <template x-if="loadingForms">
+                            <tr>
+                                <td colspan="3" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].loadingForms"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+
+            <!-- Submissions View -->
+            <template x-if="viewingForm">
+                <div>
+                    <div style="margin-bottom: 16px;">
+                        <a href="#" class="action-link" @click.prevent="viewingForm = null; submissions = []" x-text="t[lang].backToForms"></a>
+                    </div>
+                    <h2 class="display-xs" style="margin-top:0;" x-text="t[lang].submissionsOf + viewingForm.name"></h2>
+                    
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                                    <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].date"></th>
+                                    <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].name"></th>
+                                    <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].contact"></th>
+                                    <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].ip"></th>
+                                    <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].content"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="sub in submissions" :key="sub.id">
+                                    <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                                        <td style="padding: 16px 8px; font-family: monospace; font-size: 13px;" x-text="new Date(sub.created_at).toLocaleString()"></td>
+                                        <td style="padding: 16px 8px;" x-text="sub.name"></td>
+                                        <td style="padding: 16px 8px;">
+                                            <div x-show="sub.email" x-text="'✉️ ' + sub.email"></div>
+                                            <div x-show="sub.phone" x-text="'📞 ' + sub.phone"></div>
+                                        </td>
+                                        <td style="padding: 16px 8px; font-family: monospace; font-size: 13px;" x-text="sub.client_ip"></td>
+                                        <td style="padding: 16px 8px; max-width: 200px;">
+                                            <a href="#" class="action-link" x-text="truncate(sub.content, 10)" @click.prevent="openDetailModal(sub)"></a>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-if="submissions.length === 0 && !loadingSubmissions">
+                                    <tr>
+                                        <td colspan="5" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].noSubmissions"></td>
+                                    </tr>
+                                </template>
+                                <template x-if="loadingSubmissions">
+                                    <tr>
+                                        <td colspan="5" style="padding: 32px; text-align: center; color: var(--colors-body-mid);" x-text="t[lang].loadingSub"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </template>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" x-show="showModal" style="display: none;" x-cloak>
+        <div class="modal-card" @click.away="closeModal()">
+            <h2 class="display-xs" style="margin-top:0; margin-bottom: 24px;" x-text="modalTitle"></h2>
+            
+            <!-- Create/Edit Form -->
+            <template x-if="modalType === 'create' || modalType === 'edit'">
+                <form @submit.prevent="saveForm">
+                    <div class="input-group">
+                        <label x-text="t[lang].formName"></label>
+                        <input type="text" x-model="editingForm.name" class="text-input" required>
+                    </div>
+                    <div class="input-group">
+                        <label x-text="t[lang].notifyEmail"></label>
+                        <input type="email" x-model="editingForm.notify_email" class="text-input" :placeholder="t[lang].notifyPlaceholder">
+                    </div>
+                    <div class="input-group">
+                        <label x-text="t[lang].queryPassword"></label>
+                        <input type="password" x-model="editingForm.query_password" class="text-input" :placeholder="modalType === 'edit' ? t[lang].queryPasswordPlaceholderEdit : t[lang].queryPasswordPlaceholderNew">
+                    </div>
+                    <div style="display: flex; gap: 12px; margin-top: 24px;">
+                        <button type="button" class="button-outline" @click="closeModal()" x-text="t[lang].cancel"></button>
+                        <button type="submit" class="button-outline" style="background-color: var(--colors-ink); color: var(--colors-canvas);" :disabled="saving">
+                            <span x-text="saving ? t[lang].saving : t[lang].save"></span>
+                        </button>
+                    </div>
+                </form>
+            </template>
+
+            <!-- Embed Code Modal -->
+            <template x-if="modalType === 'embed'">
+                <div>
+                    <p style="margin-top:0; font-size: 14px; color: var(--colors-body);" x-text="t[lang].embedDesc"></p>
+                    <div class="input-group">
+                        <textarea class="text-input" rows="4" readonly x-text="getEmbedCode()" style="font-family: monospace; font-size: 13px; color: var(--colors-body-mid); background-color: var(--colors-canvas);"></textarea>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" class="button-outline" @click="closeModal()" x-text="t[lang].close"></button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Submission Detail Modal -->
+            <template x-if="modalType === 'detail'">
+                <div>
+                    <div class="input-group">
+                        <label x-text="t[lang].name"></label>
+                        <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.name"></p>
+                    </div>
+                    <div class="input-group" x-show="detailSub.email">
+                        <label>Email</label>
+                        <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.email"></p>
+                    </div>
+                    <div class="input-group" x-show="detailSub.phone">
+                        <label>Phone</label>
+                        <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.phone"></p>
+                    </div>
+                    <div class="input-group">
+                        <label x-text="t[lang].content"></label>
+                        <p class="text-input" style="margin:0; cursor:default; white-space: pre-wrap;" x-text="detailSub.content"></p>
+                    </div>
+                    <div class="input-group" x-show="detailSub.source_url">
+                        <label>Source URL</label>
+                        <p class="text-input" style="margin:0; cursor:default; font-family: monospace; font-size: 13px; word-break: break-all;" x-text="detailSub.source_url"></p>
+                    </div>
+                    <div class="input-group">
+                        <label x-text="t[lang].ip"></label>
+                        <p class="text-input" style="margin:0; cursor:default; font-family: monospace; font-size: 13px;" x-text="detailSub.client_ip"></p>
+                    </div>
+                    <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" class="button-outline" @click="closeModal()" x-text="t[lang].close"></button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+</div>
+
+<script>
+window.turnstileToken = '';
+function onTurnstileSuccess(token) {
+    window.turnstileToken = token;
+    window.dispatchEvent(new CustomEvent('turnstile-resolved'));
+}
+
+function adminApp() {
+    return {
+        lang: '{{.Lang}}',
+        siteKey: '{{.SiteKey}}',
+        isLoggedIn: false, // We can initialize this based on cookie check endpoint later
+        loading: false,
+        loadingForms: false,
+        password: '',
+        error: '',
+        showCaptcha: false,
+        turnstileWidgetId: null,
+        forms: [],
+        
+        // Submissions view state
+        viewingForm: null,
+        submissions: [],
+        loadingSubmissions: false,
+        detailSub: {},
+
+        // Modal state
+        showModal: false,
+        modalType: '', // 'create', 'edit', 'embed', 'detail'
+        modalTitle: '',
+        saving: false,
+        editingForm: {
+            id: '',
+            name: '',
+            notify_email: '',
+            query_password: ''
+        },
+
+        t: {
+            en: {
+                adminAccess: "Admin Access",
+                password: "Password",
+                enter: "Enter",
+                authenticating: "Authenticating...",
+                verifyContinue: "Verify to continue...",
+                forms: "Forms",
+                manageDesc: "Manage your embeddable feedback forms",
+                newForm: "New Form",
+                name: "Name",
+                id: "ID",
+                actions: "Actions",
+                preview: "Preview",
+                queryLink: "Query",
+                data: "Data",
+                edit: "Edit",
+                embedCode: "Embed Code",
+                delete: "Delete",
+                logout: "Logout",
+                noForms: "No forms created yet.",
+                loadingForms: "Loading forms...",
+                backToForms: "← Back to Forms",
+                submissionsOf: "Submissions: ",
+                date: "Date",
+                contact: "Contact",
+                ip: "IP",
+                content: "Content",
+                noSubmissions: "No submissions yet.",
+                loadingSub: "Loading...",
+                createTitle: "Create New Form",
+                editTitle: "Edit Form",
+                embedTitle: "Embed Form",
+                detailTitle: "Submission Detail",
+                formName: "Form Name",
+                notifyEmail: "Notify Email (Optional)",
+                notifyPlaceholder: "Defaults to system email if empty",
+                queryPassword: "Query Password",
+                queryPasswordPlaceholderEdit: "Leave empty to keep unchanged",
+                queryPasswordPlaceholderNew: "Password for data query",
+                cancel: "Cancel",
+                save: "Save",
+                saving: "Saving...",
+                close: "Close",
+                embedDesc: "Copy and paste this snippet into your website's HTML where you want the form to appear.",
+                deleteConfirm: "Are you sure you want to delete this form and all its submissions? This cannot be undone.",
+                saveFailed: "Failed to save form",
+                deleteFailed: "Failed to delete form",
+                networkError: "Network error",
+                completeCaptcha: "Please complete the captcha",
+                enterPassword: "Please enter a password"
+            },
+            zh: {
+                adminAccess: "管理后台",
+                password: "密码",
+                enter: "进入",
+                authenticating: "验证中...",
+                verifyContinue: "请完成验证...",
+                forms: "表单列表",
+                manageDesc: "管理你的可嵌入反馈表单",
+                newForm: "新建表单",
+                name: "名称",
+                id: "编号",
+                actions: "操作",
+                preview: "预览",
+                queryLink: "查询",
+                data: "数据",
+                edit: "编辑",
+                embedCode: "嵌入代码",
+                delete: "删除",
+                logout: "退出",
+                noForms: "暂无表单。",
+                loadingForms: "加载中...",
+                backToForms: "← 返回列表",
+                submissionsOf: "提交数据: ",
+                date: "日期",
+                contact: "联系方式",
+                ip: "IP",
+                content: "内容",
+                noSubmissions: "暂无提交。",
+                loadingSub: "加载中...",
+                createTitle: "新建表单",
+                editTitle: "编辑表单",
+                embedTitle: "嵌入代码",
+                detailTitle: "提交详情",
+                formName: "表单名称",
+                notifyEmail: "通知邮箱（可选）",
+                notifyPlaceholder: "留空则使用系统默认邮箱",
+                queryPassword: "查询密码",
+                queryPasswordPlaceholderEdit: "留空则保持不变",
+                queryPasswordPlaceholderNew: "用于数据查询的密码",
+                cancel: "取消",
+                save: "保存",
+                saving: "保存中...",
+                close: "关闭",
+                embedDesc: "将以下代码复制粘贴到你的网站 HTML 中你想显示表单的位置。",
+                deleteConfirm: "确定要删除此表单及其所有提交数据吗？此操作不可撤销。",
+                saveFailed: "保存失败",
+                deleteFailed: "删除失败",
+                networkError: "网络错误",
+                completeCaptcha: "请完成人机验证",
+                enterPassword: "请输入密码"
+            }
+        },
+
+        initObserver() {
+            // Try to restore existing session on page load
+            this.fetchForms();
+
+            window.addEventListener('turnstile-resolved', () => {
+                this.login();
+            });
+        },
+
+        currentUrlWithLang(l) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('lang', l);
+            return url.toString();
+        },
+
+        async logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            this.isLoggedIn = false;
+            this.forms = [];
+        },
+
+        async login() {
+            this.error = '';
+            
+            // Client-side: check password is not empty
+            if (!this.password.trim()) {
+                this.error = this.t[this.lang].enterPassword;
+                return;
+            }
+
+            // First step: Show Turnstile if needed
+            if (this.siteKey && !window.turnstileToken) {
+                if (!this.showCaptcha) {
+                    this.showCaptcha = true;
+                    setTimeout(() => {
+                        if (window.turnstile && this.turnstileWidgetId === null) {
+                            this.turnstileWidgetId = turnstile.render('#admin-turnstile-container', {
+                                sitekey: this.siteKey,
+                                callback: onTurnstileSuccess
+                            });
+                        }
+                    }, 50);
+                    return;
+                } else {
+                    this.error = this.t[this.lang].completeCaptcha;
+                    return;
+                }
+            }
+
+            // Second step: Actually login
+            this.loading = true;
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: this.password,
+                        turnstile_token: window.turnstileToken
+                    })
+                });
+                
+                if (res.ok) {
+                    this.isLoggedIn = true;
+                    this.fetchForms();
+                } else {
+                    const data = await res.json();
+                    this.error = data.message || 'Login failed';
+                    if (window.turnstile && this.turnstileWidgetId !== null) {
+                        turnstile.remove(this.turnstileWidgetId);
+                    }
+                    window.turnstileToken = '';
+                    this.showCaptcha = false;
+                    this.turnstileWidgetId = null;
+                }
+            } catch (err) {
+                this.error = 'Network error';
+                if (window.turnstile && this.turnstileWidgetId !== null) {
+                    turnstile.remove(this.turnstileWidgetId);
+                }
+                window.turnstileToken = '';
+                this.showCaptcha = false;
+                this.turnstileWidgetId = null;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async fetchForms() {
+            this.loadingForms = true;
+            try {
+                const res = await fetch('/api/admin/forms');
+                if (res.ok) {
+                    this.forms = await res.json();
+                    this.isLoggedIn = true;
+                } else if (res.status === 401) {
+                    this.isLoggedIn = false;
+                }
+            } catch (err) {
+                console.error("Failed to fetch forms", err);
+            } finally {
+                this.loadingForms = false;
+            }
+        },
+
+        createNewForm() {
+            this.modalType = 'create';
+            this.modalTitle = this.lang === 'zh' ? '新建表单' : 'Create New Form';
+            this.editingForm = { id: '', name: '', notify_email: '', query_password: '' };
+            this.showModal = true;
+        },
+
+        openEditModal(form) {
+            this.modalType = 'edit';
+            this.modalTitle = this.lang === 'zh' ? '编辑表单' : 'Edit Form';
+            // copy data, leave password empty (it will only update if filled)
+            this.editingForm = { id: form.id, name: form.name, notify_email: form.notify_email, query_password: '' };
+            this.showModal = true;
+        },
+
+        openEmbedModal(form) {
+            this.modalType = 'embed';
+            this.modalTitle = this.lang === 'zh' ? '嵌入代码' : 'Embed Form';
+            this.editingForm = { id: form.id };
+            this.showModal = true;
+        },
+
+        openDetailModal(sub) {
+            this.modalType = 'detail';
+            this.modalTitle = this.lang === 'zh' ? '提交详情' : 'Submission Detail';
+            this.detailSub = sub;
+            this.showModal = true;
+        },
+
+        truncate(str, n) {
+            if (!str) return '';
+            return str.length > n ? str.substring(0, n) + '...' : str;
+        },
+
+        closeModal() {
+            this.showModal = false;
+        },
+
+        openPreview(id) {
+            window.open(`/f/${id}?theme=dark&lang=zh`, '_blank');
+        },
+
+        async viewSubmissions(form) {
+            this.viewingForm = form;
+            this.loadingSubmissions = true;
+            this.submissions = [];
+            try {
+                const res = await fetch(`/api/admin/forms/${form.id}/submissions`);
+                if (res.ok) {
+                    this.submissions = await res.json();
+                }
+            } catch (err) {
+                console.error(err);
+            } finally {
+                this.loadingSubmissions = false;
+            }
+        },
+
+        getEmbedCode() {
+            const host = window.location.origin;
+            return `<script src="${host}/embed.js" data-id="${this.editingForm.id}" data-theme="light" data-lang="en"><\/script>`;
+        },
+
+        async saveForm() {
+            this.saving = true;
+            try {
+                const method = this.modalType === 'create' ? 'POST' : 'PUT';
+                const url = this.modalType === 'create' ? '/api/admin/forms' : `/api/admin/forms/${this.editingForm.id}`;
+                
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.editingForm.name,
+                        notify_email: this.editingForm.notify_email,
+                        query_password: this.editingForm.query_password
+                    })
+                });
+
+                if (res.ok) {
+                    this.closeModal();
+                    this.fetchForms();
+                } else {
+                    alert(this.t[this.lang].saveFailed);
+                }
+            } catch (err) {
+                alert(this.t[this.lang].networkError);
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async deleteForm(id) {
+            if (!confirm(this.t[this.lang].deleteConfirm)) return;
+            
+            try {
+                const res = await fetch(`/api/admin/forms/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    this.fetchForms();
+                } else {
+                    alert(this.t[this.lang].deleteFailed);
+                }
+            } catch (err) {
+                alert(this.t[this.lang].networkError);
+            }
+        }
+    }
+}
+</script>
+</body>
+</html>

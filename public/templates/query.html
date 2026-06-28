@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Query Submissions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist+Mono&family=Inter:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" defer></script>
+    <style>
+        body {
+            background-color: var(--colors-canvas-soft);
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background-color: var(--colors-canvas);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 32px;
+        }
+        .login-box {
+            max-width: 400px;
+            margin: 100px auto;
+            background-color: var(--colors-canvas);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 32px;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 50;
+        }
+        .modal-card {
+            background: var(--colors-canvas-card);
+            border: 1px solid var(--colors-hairline);
+            border-radius: 8px;
+            padding: 24px;
+            width: 100%;
+            max-width: 480px;
+        }
+        .action-link {
+            color: var(--colors-ink);
+            text-decoration: underline;
+            cursor: pointer;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+
+<div x-data="queryApp()" x-init="initObserver()" class="app-wrapper">
+
+    <!-- Language Toggle -->
+    <div style="position: fixed; top: 12px; right: 16px; z-index: 100; display: flex; gap: 8px;">
+        <a :href="currentUrlWithLang('en')" class="action-link" :style="lang === 'en' ? 'font-weight: 700;' : ''">EN</a>
+        <span style="color: var(--colors-body-mid);">/</span>
+        <a :href="currentUrlWithLang('zh')" class="action-link" :style="lang === 'zh' ? 'font-weight: 700;' : ''">中文</a>
+    </div>
+    
+    <!-- Login Form -->
+    <template x-if="!isAuthenticated">
+        <div class="login-box">
+            <h1 class="display-sm" style="margin-top:0;" x-text="t[lang].viewData"></h1>
+            <form @submit.prevent="login">
+                <div class="input-group">
+                    <label x-text="t[lang].queryPassword"></label>
+                    <input type="password" x-model="password" class="text-input">
+                </div>
+                <div class="input-group" x-show="siteKey && showCaptcha">
+                    <div id="query-turnstile-container"></div>
+                </div>
+                <button type="submit" class="button-outline" :disabled="loading || showCaptcha" style="width:100%;">
+                    <span x-text="showCaptcha ? t[lang].verifyContinue : (loading ? t[lang].authenticating : t[lang].viewBtn)"></span>
+                </button>
+                <template x-if="error">
+                    <div class="error-msg" style="margin-top:16px; text-align:center;" x-text="error"></div>
+                </template>
+            </form>
+        </div>
+    </template>
+
+    <!-- Data View -->
+    <template x-if="isAuthenticated">
+        <div class="container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1 class="display-sm" style="margin-top:0;" x-text="t[lang].submissionsTitle + formName"></h1>
+                <button class="button-outline" style="width: auto;" @click="logout" x-text="t[lang].logout"></button>
+            </div>
+            
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; margin-top: 16px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].date"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].name"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].contact"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].ip"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].content"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="sub in submissions" :key="sub.id">
+                            <tr style="border-bottom: 1px solid var(--colors-hairline);">
+                                <td style="padding: 16px 8px; font-family: monospace; font-size: 13px;" x-text="new Date(sub.created_at).toLocaleString()"></td>
+                                <td style="padding: 16px 8px;" x-text="sub.name"></td>
+                                <td style="padding: 16px 8px;">
+                                    <div x-show="sub.email" x-text="'✉️ ' + sub.email"></div>
+                                    <div x-show="sub.phone" x-text="'📞 ' + sub.phone"></div>
+                                </td>
+                                <td style="padding: 16px 8px; font-family: monospace; font-size: 13px;" x-text="sub.client_ip"></td>
+                                <td style="padding: 16px 8px; max-width: 200px;">
+                                    <a href="#" class="action-link" x-text="truncate(sub.content, 10)" @click.prevent="openDetailModal(sub)"></a>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="submissions.length === 0">
+                            <tr>
+                                <td colspan="5" style="padding: 32px; text-align: center; color: var(--colors-body-mid);">No submissions yet.</td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </template>
+
+    <!-- Detail Modal Overlay -->
+    <div class="modal-overlay" x-show="showModal" style="display: none;" x-cloak>
+        <div class="modal-card" @click.away="closeModal()">
+            <h2 class="display-xs" style="margin-top:0; margin-bottom: 24px;">Submission Detail</h2>
+            <div class="input-group">
+                <label>Name</label>
+                <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.name"></p>
+            </div>
+            <div class="input-group" x-show="detailSub.email">
+                <label>Email</label>
+                <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.email"></p>
+            </div>
+            <div class="input-group" x-show="detailSub.phone">
+                <label>Phone</label>
+                <p class="text-input" style="margin:0; cursor:default;" x-text="detailSub.phone"></p>
+            </div>
+            <div class="input-group">
+                <label>Content</label>
+                <p class="text-input" style="margin:0; cursor:default; white-space: pre-wrap;" x-text="detailSub.content"></p>
+            </div>
+            <div class="input-group" x-show="detailSub.source_url">
+                <label>Source URL</label>
+                <p class="text-input" style="margin:0; cursor:default; font-family: monospace; font-size: 13px; word-break: break-all;" x-text="detailSub.source_url"></p>
+            </div>
+            <div class="input-group">
+                <label>IP</label>
+                <p class="text-input" style="margin:0; cursor:default; font-family: monospace; font-size: 13px;" x-text="detailSub.client_ip"></p>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
+                <button type="button" class="button-outline" @click="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+window.turnstileToken = '';
+function onTurnstileSuccess(token) {
+    window.turnstileToken = token;
+    window.dispatchEvent(new CustomEvent('turnstile-resolved'));
+}
+
+function queryApp() {
+    return {
+        lang: '{{.Lang}}',
+        formId: '{{.FormID}}',
+        formName: '{{.FormName}}',
+        siteKey: '{{.SiteKey}}',
+        isAuthenticated: false,
+        loading: false,
+        password: '',
+        error: '',
+        showCaptcha: false,
+        turnstileWidgetId: null,
+        submissions: [],
+        showModal: false,
+        detailSub: {},
+
+        t: {
+            en: {
+                viewData: "View Data",
+                submissionsTitle: "Submissions of ",
+                queryPassword: "Query Password",
+                viewBtn: "View Submissions",
+                authenticating: "Authenticating...",
+                verifyContinue: "Verify to continue...",
+                logout: "Logout",
+                date: "Date",
+                name: "Name",
+                contact: "Contact",
+                ip: "IP",
+                content: "Content",
+                noSubmissions: "No submissions yet.",
+                enterPassword: "Please enter the query password",
+                completeCaptcha: "Please complete the captcha"
+            },
+            zh: {
+                viewData: "查看数据",
+                submissionsTitle: "提交数据: ",
+                queryPassword: "查询密码",
+                viewBtn: "查看提交",
+                authenticating: "验证中...",
+                verifyContinue: "请完成验证...",
+                logout: "退出",
+                date: "日期",
+                name: "姓名",
+                contact: "联系方式",
+                ip: "IP",
+                content: "内容",
+                noSubmissions: "暂无提交。",
+                enterPassword: "请输入查询密码",
+                completeCaptcha: "请完成人机验证"
+            }
+        },
+
+        initObserver() {
+            // Check if already authenticated via cookie
+            this.tryRestoreSession();
+
+            window.addEventListener('turnstile-resolved', () => {
+                this.login();
+            });
+        },
+
+        async tryRestoreSession() {
+            try {
+                const res = await fetch(`/api/query/${this.formId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: '', turnstile_token: '' }) // dummy body, server checks cookie first
+                });
+                if (res.ok) {
+                    this.submissions = await res.json();
+                    this.isAuthenticated = true;
+                }
+            } catch (e) {
+                // Cookie not valid, stay on login screen
+            }
+        },
+
+        currentUrlWithLang(l) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('lang', l);
+            return url.toString();
+        },
+
+        async logout() {
+            await fetch(`/api/query/${this.formId}/logout`, { method: 'POST' });
+            this.isAuthenticated = false;
+            this.submissions = [];
+            this.password = '';
+        },
+
+        async login() {
+            this.error = '';
+            
+            // Client-side: check password is not empty
+            if (!this.password.trim()) {
+                this.error = this.t[this.lang].enterPassword;
+                return;
+            }
+
+            // Show Turnstile if needed
+            if (this.siteKey && !window.turnstileToken) {
+                if (!this.showCaptcha) {
+                    this.showCaptcha = true;
+                    setTimeout(() => {
+                        if (window.turnstile && this.turnstileWidgetId === null) {
+                            this.turnstileWidgetId = turnstile.render('#query-turnstile-container', {
+                                sitekey: this.siteKey,
+                                callback: onTurnstileSuccess
+                            });
+                        }
+                    }, 50);
+                    return;
+                } else {
+                    this.error = this.t[this.lang].completeCaptcha;
+                    return;
+                }
+            }
+
+            // Actually submit
+            this.loading = true;
+            try {
+                const res = await fetch(`/api/query/${this.formId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        password: this.password,
+                        turnstile_token: window.turnstileToken
+                    })
+                });
+                
+                if (res.ok) {
+                    this.submissions = await res.json();
+                    this.isAuthenticated = true;
+                } else {
+                    const data = await res.json();
+                    this.error = data.message || 'Authentication failed';
+                    if (window.turnstile && this.turnstileWidgetId !== null) {
+                        turnstile.remove(this.turnstileWidgetId);
+                    }
+                    window.turnstileToken = '';
+                    this.showCaptcha = false;
+                    this.turnstileWidgetId = null;
+                }
+            } catch (err) {
+                this.error = 'Network error';
+                this.showCaptcha = false;
+                this.turnstileWidgetId = null;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        openDetailModal(sub) {
+            this.detailSub = sub;
+            this.showModal = true;
+        },
+
+        truncate(str, n) {
+            if (!str) return '';
+            return str.length > n ? str.substring(0, n) + '...' : str;
+        },
+
+        closeModal() {
+            this.showModal = false;
+        }
+    }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+root = "."
+tmp_dir = ".temp"
+
+[build]
+  cmd = "go build -o .temp\\main.exe main.go"
+  bin = ".temp\\main.exe"
+  full_bin = ".temp\\main.exe"
+  include_ext = ["go", "html", "css", "js"]
+  exclude_dir = [".trae", ".git", "data", ".temp"]
+  delay = 500
+  stop_on_error = false
+  log = "build-errors.log"
+  log_level = "debug"
+  send_interrupt = true
+  kill_delay = 500
+
+[log]
+  main_only = false
+  time = false
+
+[color]
+  main = "magenta"
+  build = "yellow"
+  runner = "green"
+  watcher = "cyan"
+
+[misc]
+  clean_on_exit = true
