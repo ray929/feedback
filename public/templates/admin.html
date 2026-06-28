@@ -117,23 +117,23 @@
                     <thead>
                         <tr style="border-bottom: 1px solid var(--colors-hairline);">
                             <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].name"></th>
-                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].id"></th>
+                            <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].uuid"></th>
                             <th class="caption-mono" style="padding: 12px 8px; text-align: center;" x-text="t[lang].submissions"></th>
                             <th class="caption-mono" style="padding: 12px 8px;" x-text="t[lang].actions"></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="form in forms" :key="form.id">
+                        <template x-for="form in forms" :key="form.uuid">
                             <tr style="border-bottom: 1px solid var(--colors-hairline);">
                                 <td style="padding: 16px 8px;" x-text="form.name"></td>
-                                <td style="padding: 16px 8px; font-family: monospace; color: var(--colors-body-mid);" x-text="form.id"></td>
+                                <td style="padding: 16px 8px; font-family: monospace; color: var(--colors-body-mid);" x-text="form.uuid"></td>
                                 <td style="padding: 16px 8px; text-align: center; font-family: monospace; color: var(--colors-body-mid);" x-text="form.submission_count"></td>
                                 <td style="padding: 16px 8px;">
                                     <a href="#" class="action-link" @click.prevent="openShareModal(form)" x-text="t[lang].share"></a>
-                                    <a href="#" class="action-link" @click.prevent="window.open('/q/' + form.id, '_blank')" x-text="t[lang].queryLink"></a>
+                                    <a href="#" class="action-link" @click.prevent="window.open('/q/' + form.uuid, '_blank')" x-text="t[lang].queryLink"></a>
                                     <a href="#" class="action-link" @click.prevent="viewSubmissions(form)" x-text="t[lang].data"></a>
                                     <a href="#" class="action-link" @click.prevent="openEditModal(form)" x-text="t[lang].edit"></a>
-                                    <a href="#" class="action-link" style="color: var(--colors-error);" @click.prevent="deleteForm(form.id)" x-text="t[lang].delete"></a>
+                                    <a href="#" class="action-link" style="color: var(--colors-error);" @click.prevent="deleteForm(form.uuid)" x-text="t[lang].delete"></a>
                                 </td>
                             </tr>
                         </template>
@@ -393,7 +393,7 @@ function adminApp() {
                 manageDesc: "Manage your embeddable feedback forms",
                 newForm: "New Form",
                 name: "Name",
-                id: "ID",
+                uuid: "UUID",
                 submissions: "Submissions",
                 actions: "Actions",
                 preview: "Preview",
@@ -455,7 +455,7 @@ function adminApp() {
                 manageDesc: "管理你的可嵌入反馈表单",
                 newForm: "新建表单",
                 name: "名称",
-                id: "编号",
+                uuid: "编号",
                 submissions: "提交数",
                 actions: "操作",
                 preview: "预览",

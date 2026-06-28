@@ -18,6 +18,15 @@ type FormPayload struct {
 	NotifyEmail   string `json:"notify_email"`
 }
 
+// resolveFormByUUID returns (internal_id, name, notify_email, error)
+func resolveFormByUUID(uuid string) (int, string, string, error) {
+	var id int
+	var name string
+	var email sqlNullString
+	err := db.DB.QueryRow("SELECT id, name, notify_email FROM forms WHERE uuid = ?", uuid).Scan(&id, &name, &email.String)
+	return id, name, email.String, err
+}
+
 func GetForms(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	if page < 1 {
@@ -34,7 +43,7 @@ func GetForms(c echo.Context) error {
 	db.DB.QueryRow("SELECT COUNT(*) FROM forms").Scan(&total)
 
 	rows, err := db.DB.Query(`
-		SELECT f.id, f.name, f.notify_email, f.created_at, 
+		SELECT f.id, f.uuid, f.name, f.notify_email, f.created_at, 
 		       COALESCE((SELECT COUNT(*) FROM submissions s WHERE s.form_id = f.id), 0) as submission_count
 		FROM forms f ORDER BY f.created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
@@ -45,7 +54,7 @@ func GetForms(c echo.Context) error {
 	var forms []models.Form
 	for rows.Next() {
 		var f models.Form
-		if err := rows.Scan(&f.ID, &f.Name, &f.NotifyEmail, &f.CreatedAt, &f.SubmissionCount); err != nil {
+		if err := rows.Scan(&f.ID, &f.UUID, &f.Name, &f.NotifyEmail, &f.CreatedAt, &f.SubmissionCount); err != nil {
 			continue
 		}
 		forms = append(forms, f)
@@ -73,7 +82,7 @@ func CreateForm(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Name is required"})
 	}
 
-	id := uuid.New().String()
+	formUUID := uuid.New().String()
 	var hash string
 	if payload.QueryPassword != "" {
 		hashedBytes, err := bcrypt.GenerateFromPassword([]byte(payload.QueryPassword), bcrypt.DefaultCost)
@@ -83,17 +92,17 @@ func CreateForm(c echo.Context) error {
 		hash = string(hashedBytes)
 	}
 
-	_, err := db.DB.Exec("INSERT INTO forms (id, name, query_password, notify_email) VALUES (?, ?, ?, ?)",
-		id, payload.Name, hash, payload.NotifyEmail)
+	_, err := db.DB.Exec("INSERT INTO forms (uuid, name, query_password, notify_email) VALUES (?, ?, ?, ?)",
+		formUUID, payload.Name, hash, payload.NotifyEmail)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Failed to create form"})
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"id": id, "message": "Form created successfully"})
+	return c.JSON(http.StatusOK, map[string]string{"id": formUUID, "message": "Form created successfully"})
 }
 
 func UpdateForm(c echo.Context) error {
-	id := c.Param("id")
+	uuid := c.Param("id")
 	var payload FormPayload
 	if err := c.Bind(&payload); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"message": "Invalid payload"})
@@ -104,17 +113,15 @@ func UpdateForm(c echo.Context) error {
 	}
 
 	if payload.QueryPassword != "" {
-		// Update with new password
 		hashedBytes, _ := bcrypt.GenerateFromPassword([]byte(payload.QueryPassword), bcrypt.DefaultCost)
-		_, err := db.DB.Exec("UPDATE forms SET name = ?, query_password = ?, notify_email = ? WHERE id = ?",
-			payload.Name, string(hashedBytes), payload.NotifyEmail, id)
+		_, err := db.DB.Exec("UPDATE forms SET name = ?, query_password = ?, notify_email = ? WHERE uuid = ?",
+			payload.Name, string(hashedBytes), payload.NotifyEmail, uuid)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Failed to update form"})
 		}
 	} else {
-		// Update without touching password
-		_, err := db.DB.Exec("UPDATE forms SET name = ?, notify_email = ? WHERE id = ?",
-			payload.Name, payload.NotifyEmail, id)
+		_, err := db.DB.Exec("UPDATE forms SET name = ?, notify_email = ? WHERE uuid = ?",
+			payload.Name, payload.NotifyEmail, uuid)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Failed to update form"})
 		}
@@ -124,15 +131,15 @@ func UpdateForm(c echo.Context) error {
 }
 
 func DeleteForm(c echo.Context) error {
-	id := c.Param("id")
+	uuid := c.Param("id")
 
-	// Delete associated submissions first to maintain referential integrity
-	_, err := db.DB.Exec("DELETE FROM submissions WHERE form_id = ?", id)
+	// Delete associated submissions first
+	_, err := db.DB.Exec("DELETE FROM submissions WHERE form_id = (SELECT id FROM forms WHERE uuid = ?)", uuid)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Failed to delete submissions"})
 	}
 
-	_, err = db.DB.Exec("DELETE FROM forms WHERE id = ?", id)
+	_, err = db.DB.Exec("DELETE FROM forms WHERE uuid = ?", uuid)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Failed to delete form"})
 	}
@@ -141,7 +148,7 @@ func DeleteForm(c echo.Context) error {
 }
 
 func GetSubmissions(c echo.Context) error {
-	id := c.Param("id")
+	uuid := c.Param("id")
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	if page < 1 {
 		page = 1
@@ -152,10 +159,16 @@ func GetSubmissions(c echo.Context) error {
 	}
 	offset := (page - 1) * limit
 
-	var total int
-	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", id).Scan(&total)
+	// Resolve UUID to internal ID
+	formIntID, _, _, err := resolveFormByUUID(uuid)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"message": "Form not found"})
+	}
 
-	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", id, limit, offset)
+	var total int
+	db.DB.QueryRow("SELECT COUNT(*) FROM submissions WHERE form_id = ?", formIntID).Scan(&total)
+
+	rows, err := db.DB.Query("SELECT id, name, email, phone, content, source_url, client_ip, created_at FROM submissions WHERE form_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?", formIntID, limit, offset)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"message": "Database error"})
 	}

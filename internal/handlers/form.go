@@ -56,7 +56,7 @@ func RenderQuery(c echo.Context) error {
 
 	// Query form name
 	var formName string
-	if err := db.DB.QueryRow("SELECT name FROM forms WHERE id = ?", id).Scan(&formName); err != nil {
+	if err := db.DB.QueryRow("SELECT name FROM forms WHERE uuid = ?", id).Scan(&formName); err != nil {
 		formName = id // fallback
 	}
 
