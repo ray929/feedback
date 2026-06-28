@@ -32,10 +32,23 @@ func migrateSchema() {
 	var userVersion int
 	DB.QueryRow("PRAGMA user_version").Scan(&userVersion)
 
-	if userVersion >= 1 {
-		return // already migrated
+	log.Printf("Current schema version: %d", userVersion)
+
+	if userVersion < 1 {
+		migrateToV1()
+		userVersion = 1
 	}
 
+	// 后续迁移由此递增：
+	// if userVersion < 2 {
+	//     migrateToV2()
+	//     userVersion = 2
+	// }
+
+	log.Printf("Schema migration complete. Version: %d", userVersion)
+}
+
+func migrateToV1() {
 	log.Println("Running schema migration to v1...")
 
 	// Drop old tables (data will be lost — intentional per v1 migration)
@@ -72,5 +85,5 @@ func migrateSchema() {
 	}
 
 	DB.Exec("PRAGMA user_version = 1")
-	log.Println("Schema migration complete.")
+	log.Println("Schema migration to v1 complete.")
 }
