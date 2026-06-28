@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bufio"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -30,25 +31,38 @@ func SetHtpasswdPath(path string) {
 func checkPassword(password string) bool {
 	file, err := os.Open(htpasswdPath)
 	if err != nil {
+		log.Printf("DEBUG checkPassword: failed to open %s: %v", htpasswdPath, err)
 		return false
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	found := false
 	for scanner.Scan() {
 		line := scanner.Text()
+		log.Printf("DEBUG checkPassword: line=%s", line)
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 && parts[0] == "admin" {
+			found = true
 			hash := parts[1]
-			// Check if it's bcrypt
+			log.Printf("DEBUG checkPassword: found admin, hash prefix=%s, hash len=%d", hash[:4], len(hash))
 			if strings.HasPrefix(hash, "$2") {
 				err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+				if err != nil {
+					log.Printf("DEBUG checkPassword: bcrypt mismatch: %v", err)
+				}
 				return err == nil
+			} else {
+				log.Printf("DEBUG checkPassword: hash does not start with $2")
 			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		log.Printf("DEBUG checkPassword: scanner error: %v", err)
 		return false
+	}
+	if !found {
+		log.Printf("DEBUG checkPassword: no admin entry found in %s", htpasswdPath)
 	}
 	return false
 }

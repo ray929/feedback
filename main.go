@@ -53,18 +53,25 @@ func main() {
 		log.Fatalf("Failed to get executable path: %v", err)
 	}
 	execDir = filepath.Dir(execDir)
+	log.Printf("Executable dir: %s", execDir)
 
 	// 加载环境变量（从程序所在目录）
 	envPath := filepath.Join(execDir, ".env")
 	if err := godotenv.Load(envPath); err != nil {
 		log.Printf("No .env file found at %s, using system env vars", envPath)
+	} else {
+		log.Printf("Loaded .env from %s", envPath)
 	}
 
 	// 初始化 SQLite 数据库（从程序所在目录）
-	db.InitDB(filepath.Join(execDir, "data", "feedback.db"))
+	dbPath := filepath.Join(execDir, "data", "feedback.db")
+	log.Printf("Database path: %s", dbPath)
+	db.InitDB(dbPath)
 
 	// 设置 .htpasswd 路径（从程序所在目录）
-	handlers.SetHtpasswdPath(filepath.Join(execDir, ".htpasswd"))
+	htpasswdPath := filepath.Join(execDir, ".htpasswd")
+	log.Printf("htpasswd path: %s", htpasswdPath)
+	handlers.SetHtpasswdPath(htpasswdPath)
 
 	// 初始化 Redis 连接
 	feedbackRedis.InitRedis()
