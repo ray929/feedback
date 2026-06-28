@@ -2,12 +2,15 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"io"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"runtime"
+	"strings"
 
 	"feedback/internal/db"
 	"feedback/internal/handlers"
@@ -29,6 +32,19 @@ type TemplateRegistry struct {
 // Render renders a template document
 func (t *TemplateRegistry) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
 	return t.templates.ExecuteTemplate(w, name, data)
+}
+
+// setProcessTitle 设置进程标题，仅在 Linux 下生效，
+// 写入 /proc/self/comm 使 ps / htop 等工具显示为便于识别的名称。
+func setProcessTitle(title string) {
+	if runtime.GOOS == "linux" {
+		comm := title
+		if len(comm) > 15 {
+			comm = comm[:15]
+		}
+		comm = strings.TrimRight(comm, "\x00")
+		os.WriteFile("/proc/self/comm", []byte(comm), 0644)
+	}
 }
 
 func main() {
@@ -118,8 +134,9 @@ func main() {
 	// 启动服务器
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8010" // 默认 8010
+		port = "8010"
 	}
+	setProcessTitle(fmt.Sprintf("feedback-server :%s", port))
 	log.Printf("Starting server on port %s", port)
 	e.Logger.Fatal(e.Start(":" + port))
 }
