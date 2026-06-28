@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"unsafe"
 
@@ -72,13 +73,24 @@ func setProcessTitle(title string) {
 }
 
 func main() {
-	// 加载环境变量
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found or error loading it, using system env vars")
+	// 获取程序自身所在目录，所有相对路径均以此为基准
+	execDir, err := os.Executable()
+	if err != nil {
+		log.Fatalf("Failed to get executable path: %v", err)
+	}
+	execDir = filepath.Dir(execDir)
+
+	// 加载环境变量（从程序所在目录）
+	envPath := filepath.Join(execDir, ".env")
+	if err := godotenv.Load(envPath); err != nil {
+		log.Printf("No .env file found at %s, using system env vars", envPath)
 	}
 
-	// 初始化 SQLite 数据库
-	db.InitDB("./data/feedback.db")
+	// 初始化 SQLite 数据库（从程序所在目录）
+	db.InitDB(filepath.Join(execDir, "data", "feedback.db"))
+
+	// 设置 .htpasswd 路径（从程序所在目录）
+	handlers.SetHtpasswdPath(filepath.Join(execDir, ".htpasswd"))
 
 	// 初始化 Redis 连接
 	feedbackRedis.InitRedis()

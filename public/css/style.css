@@ -59,6 +59,7 @@ body {
   margin-bottom: 20px;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .input-group label {
@@ -68,6 +69,8 @@ body {
 }
 
 .text-input {
+  width: 100%;
+  box-sizing: border-box;
   background-color: var(--colors-canvas-soft);
   color: var(--colors-ink);
   border: 1px solid var(--colors-hairline);

@@ -19,9 +19,16 @@ type LoginRequest struct {
 	TurnstileToken string `json:"turnstile_token"`
 }
 
+var htpasswdPath = ".htpasswd"
+
+// SetHtpasswdPath 设置 .htpasswd 文件路径，应在初始化时调用
+func SetHtpasswdPath(path string) {
+	htpasswdPath = path
+}
+
 // 检查 .htpasswd 文件中的 bcrypt 密码
 func checkPassword(password string) bool {
-	file, err := os.Open(".htpasswd")
+	file, err := os.Open(htpasswdPath)
 	if err != nil {
 		return false
 	}
