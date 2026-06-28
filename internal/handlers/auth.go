@@ -40,6 +40,9 @@ func checkPassword(password string) bool {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		return false
+	}
 	return false
 }
 
