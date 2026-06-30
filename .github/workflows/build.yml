@@ -7,8 +7,6 @@ on:
         description: 'Release version (e.g. 1.0.0)'
         required: true
         type: string
-permissions:
-  contents: write
 
 jobs:
   build:
@@ -28,20 +26,37 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o feedback-server .
 
+      - name: Package artifact
+        run: |
+          PKG_NAME="feedback-server-${{ inputs.version }}-linux-amd64"
+          zip -j "${PKG_NAME}.zip" "feedback-server"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: feedback-server-linux-amd64
-          path: feedback-server
+          name: feedback-server-${{ inputs.version }}-linux-amd64
+          path: feedback-server-${{ inputs.version }}-linux-amd64.zip
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Create tag
         run: |
           git tag v${{ inputs.version }}
           git push origin v${{ inputs.version }}
 
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ inputs.version }}
-          files: feedback-server
+          files: artifacts/**/*.zip
           make_latest: true
